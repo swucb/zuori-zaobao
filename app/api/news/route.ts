@@ -64,6 +64,43 @@ function parseFeed(xml:string, feed:Feed):Story[] {
   }).filter((story) => story.title && story.url && !noise.test(`${story.title} ${story.summary}`));
 }
 
+function needsTranslation(story:Story) {
+  return !/[\u3400-\u9fff]/.test(story.title) && /[A-Za-z]{4}/.test(story.title);
+}
+
+async function translateStory(story:Story):Promise<Story | null> {
+  if (!needsTranslation(story)) return story;
+  const query = `${story.title}\n\n${story.summary}`;
+  const endpoint = new URL("https://translate.googleapis.com/translate_a/single");
+  endpoint.searchParams.set("client", "gtx");
+  endpoint.searchParams.set("sl", "en");
+  endpoint.searchParams.set("tl", "zh-CN");
+  endpoint.searchParams.set("dt", "t");
+  endpoint.searchParams.set("q", query);
+  try {
+    const response = await fetch(endpoint, { cf:{ cacheTtl:86400 } } as RequestInit & { cf:{cacheTtl:number} });
+    if (!response.ok) return null;
+    const payload = await response.json() as [Array<[string]>];
+    const translated = payload[0]?.map((segment) => segment[0]).join("").trim();
+    const [title, ...summaryParts] = translated.split(/\n\s*\n/);
+    const summary = summaryParts.join("\n\n").trim();
+    if (!title || !summary || !/[\u3400-\u9fff]/.test(`${title}${summary}`)) return null;
+    return { ...story, title, summary };
+  } catch {
+    return null;
+  }
+}
+
+async function translateStories(stories:Story[]) {
+  const translated:Story[] = [];
+  const batchSize = 12;
+  for (let index = 0; index < stories.length; index += batchSize) {
+    const batch = await Promise.all(stories.slice(index, index + batchSize).map(translateStory));
+    translated.push(...batch.filter((story): story is Story => story !== null));
+  }
+  return translated;
+}
+
 function diversify(stories:Story[]) {
   const groups = new Map<string, Story[]>();
   for (const story of stories.sort((a,b) => b.score - a.score)) {
@@ -102,6 +139,6 @@ export async function GET() {
   const target = dayKey(yesterday);
   const fromYesterday = unique.filter((story) => dayKey(new Date(story.publishedAt)) === target);
   const pool = fromYesterday.length >= 6 ? fromYesterday : unique;
-  const stories = diversify(pool);
+  const stories = diversify(await translateStories(pool));
   return NextResponse.json({ stories, editionDate:target, updatedAt:new Date().toISOString(), sources:[...new Set(stories.map((story) => story.source))], methodology:"公开RSS聚合、跨媒体轮排、娱乐降噪、昨日筛选与公共影响评分；不限制单一来源或总条数" }, { headers:{ "Cache-Control":"public, max-age=300, s-maxage=600" } });
 }
