@@ -39,6 +39,7 @@ const industry = /经济|企业|产业|制造|工业|投资|消费|出口|进口
 const systemWide = /全球|世界|国际|联合国|多边|世贸|贸易体系|供应链|金融市场|能源市场|气候变化|G20|APEC|WTO|IMF|global|world|international|United Nations|multilateral|supply chain|financial markets|climate/i;
 const otherCountry = /英国|法国|德国|俄罗斯|乌克兰|伊朗|以色列|日本|韩国|印度|巴西|墨西哥|加拿大|澳大利亚|意大利|西班牙|土耳其|叙利亚|黎巴嫩|卡塔尔|沙特|朝鲜|越南|菲律宾|泰国|马来西亚|新加坡|霍尔木兹|加沙|Indonesia|Britain|UK\b|France|Germany|Russia|Ukraine|Iran|Israel|Japan|Korea|India|Brazil|Mexico|Canada|Australia|Italy|Spain|Turkey|Syria|Lebanon|Qatar|Saudi|Vietnam|Philippines|Thailand|Malaysia|Singapore|Hormuz|Gaza/i;
 const chineseOfficial = /工业和信息化部|科学技术部|商务部/;
+const domesticPolicySource = /^(中国新闻网|China Daily|CGTN|工业和信息化部|科学技术部|商务部)$/;
 
 function decode(value:string) {
   return value.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,"$1").replace(/<[^>]+>/g," ")
@@ -51,7 +52,7 @@ function field(xml:string, name:string) {
 function classify(title:string, summary:string, feed:Feed) {
   const text = `${title} ${summary}`;
   const chinaRelated = chineseOfficial.test(feed.source) || china.test(text);
-  if (chinaRelated && policy.test(title)) return "政策";
+  if (domesticPolicySource.test(feed.source) && chinaRelated && policy.test(title)) return "政策";
   if (tech.test(text)) return chinaRelated ? "科技" : "全球";
   if (chinaRelated && (feed.category === "行业" || industry.test(text))) return "行业";
   return "全球";
