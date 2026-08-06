@@ -19,7 +19,7 @@ const fallbackStories: Story[] = [
     id: "fallback-1",
     title: "正在连接昨日新闻源",
     summary: "早报正在从公开 RSS 与免费新闻索引中汇总昨日的重要信息。连接完成后，这里会自动替换为真实报道。",
-    context: "系统只保留政界、全球、产业、科技与知识类内容，并自动过滤娱乐、明星和花边新闻。",
+    context: "系统只保留中国政策、中国行业、中国科技，以及中美与全球层面的重要信息，并自动过滤娱乐、明星和花边新闻。",
     category: "速览",
     source: "早报编辑器",
     url: "#",
@@ -28,7 +28,7 @@ const fallbackStories: Story[] = [
   },
 ];
 
-const filters = ["全部", "政界", "全球", "行业", "科技", "知识"];
+const filters = ["全部", "政策", "行业", "科技", "全球"];
 
 function yesterdayLabel() {
   const date = new Date();
@@ -80,7 +80,7 @@ export default function Home() {
       <section className="intro" id="top">
         <p className="eyebrow">THE MORNING BRIEF · {yesterdayLabel()}</p>
         <h1>昨天，<br />真正重要的事。</h1>
-        <p className="dek">替你读完公开新闻源。屏蔽花边与噪音，只留下影响判断的政界、行业与知识讯息。</p>
+        <p className="dek">替你读完公开新闻源。先看国内政策，再看中国行业与科技，最后掌握中美及全球大势。</p>
         <div className="meta-row">
           <span>{loading ? "正在汇总…" : `${stories.length} 条精选`}</span>
           <span>预计阅读 {Math.max(2, Math.ceil(stories.length * 0.65))} 分钟</span>
