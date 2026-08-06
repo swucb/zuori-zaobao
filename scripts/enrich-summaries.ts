@@ -18,6 +18,45 @@ const model = process.env.SUMMARY_MODEL || "openai/gpt-4.1-mini";
 const batchSize = 6;
 const requestIntervalMs = 4300;
 
+function splitSentences(value:string) {
+  return value
+    .replace(/\n+/g, "。")
+    .split(/(?<=[。！？!?；;])/)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length >= 18 && sentence.length <= 240)
+    .filter((sentence) => !/^(记者|编辑|来源|原标题|点击|更多|声明|本文)/.test(sentence));
+}
+
+function sourceSummary(story:Story, articleText:string) {
+  const chineseShare = (articleText.match(/[\u3400-\u9fff]/g) || []).length / Math.max(articleText.length, 1);
+  if (articleText.length < 100 || chineseShare < 0.25) return story.summary;
+
+  const titleTerms = [...new Set((story.title.match(/[\u3400-\u9fff]{2,6}/g) || []).flatMap((term) =>
+    term.length > 3 ? [term, ...Array.from({ length:term.length - 1 }, (_, index) => term.slice(index, index + 2))] : [term]
+  ))];
+  const sentences = splitSentences(articleText);
+  const ranked = sentences.map((sentence, index) => {
+    const titleHits = titleTerms.reduce((score, term) => score + (sentence.includes(term) ? Math.min(term.length, 4) : 0), 0);
+    const facts = (sentence.match(/\d+(?:\.\d+)?%?|《[^》]+》|国务院|中央|部委|公司|表示|宣布|发布|决定|会议/g) || []).length;
+    return { sentence, index, score:titleHits * 3 + facts * 2 + Math.max(0, 5 - index * 0.35) };
+  });
+  const picked = ranked
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 4)
+    .sort((a, b) => a.index - b.index)
+    .map(({ sentence }) => sentence);
+  if (!picked.length) return story.summary;
+
+  let first = "";
+  let second = "";
+  for (const sentence of picked) {
+    if ((first + sentence).length <= 190 || !first) first += sentence;
+    else if ((second + sentence).length <= 180 || !second) second += sentence;
+  }
+  const result = [first, second].filter(Boolean).join("\n\n").slice(0, 420);
+  return result.length >= 80 ? result : story.summary;
+}
+
 function decodeHtml(value:string) {
   const entities:Record<string,string> = { amp:"&", lt:"<", gt:">", quot:'"', apos:"'", nbsp:" " };
   return value
@@ -106,22 +145,26 @@ async function summarizeBatch(items:Array<{ story:Story; evidence:string; key:st
 }
 
 const data = JSON.parse(await readFile(newsPath, "utf8")) as { stories:Story[]; [key:string]:unknown };
-if (!token) {
-  console.log("未提供 GitHub Models 令牌，保留新闻源原摘要。");
-  process.exit(0);
-}
-
 console.log(`正在抓取 ${data.stories.length} 篇原文…`);
 const evidence = new Map<string,string>();
 const concurrency = 12;
 for (let index = 0; index < data.stories.length; index += concurrency) {
   const batch = data.stories.slice(index, index + concurrency);
   const bodies = await Promise.all(batch.map(fetchArticle));
-  batch.forEach((story, offset) => evidence.set(story.id, bodies[offset] || story.summary));
+  batch.forEach((story, offset) => {
+    const body = bodies[offset] || "";
+    evidence.set(story.id, body || story.summary);
+    const summary = sourceSummary(story, body);
+    if (summary !== story.summary) {
+      story.summary = summary;
+      story.summaryMethod = "source-extractive";
+    }
+  });
 }
 
 let enriched = 0;
-for (let index = 0; index < data.stories.length; index += batchSize) {
+if (!token) console.log("未提供 GitHub Models 令牌，使用原文提炼摘要。");
+for (let index = 0; token && index < data.stories.length; index += batchSize) {
   const stories = data.stories.slice(index, index + batchSize);
   const items = stories.map((story, offset) => ({ story, evidence:evidence.get(story.id) || story.summary, key:String(index + offset) }));
   try {
@@ -136,12 +179,15 @@ for (let index = 0; index < data.stories.length; index += batchSize) {
       }
     }
   } catch (error) {
-    console.warn(`第 ${Math.floor(index / batchSize) + 1} 批摘要失败，保留原摘要：${error instanceof Error ? error.message : error}`);
+    console.warn(`第 ${Math.floor(index / batchSize) + 1} 批 AI 摘要失败，使用原文提炼摘要：${error instanceof Error ? error.message : error}`);
   }
   if (index + batchSize < data.stories.length) await new Promise((resolveDelay) => setTimeout(resolveDelay, requestIntervalMs));
 }
 
 data.summaryEnrichedAt = new Date().toISOString();
-data.summaryEnrichedCount = enriched;
+const extracted = data.stories.filter((story) => story.summaryMethod === "source-extractive").length;
+data.summaryEnrichedCount = enriched + extracted;
+data.summaryAiCount = enriched;
+data.summarySourceCount = extracted;
 await writeFile(newsPath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
-console.log(`已生成 ${enriched}/${data.stories.length} 条一至两段中文摘要。`);
+console.log(`已生成 ${enriched + extracted}/${data.stories.length} 条一至两段中文摘要（AI ${enriched} 条，原文提炼 ${extracted} 条）。`);
