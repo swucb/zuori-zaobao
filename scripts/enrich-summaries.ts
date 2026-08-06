@@ -17,8 +17,8 @@ type Story = {
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const newsPath = resolve(root, "public-site/news.json");
-const token = process.env.GH_MODELS_TOKEN || process.env.GITHUB_TOKEN || "";
-const model = process.env.SUMMARY_MODEL || "openai/gpt-4.1-mini";
+const token = process.env.ZHIPU_API_KEY || "";
+const model = process.env.SUMMARY_MODEL || "glm-4.7-flash";
 const batchSize = 6;
 const requestIntervalMs = 4300;
 
@@ -176,19 +176,18 @@ async function summarizeBatch(items:Array<{ story:Story; evidence:string; key:st
     article_text:evidence.slice(0, 1200),
   }));
 
-  const response = await fetch("https://models.github.ai/inference/chat/completions", {
+  const response = await fetch("https://open.bigmodel.cn/api/paas/v4/chat/completions", {
     method:"POST",
     signal:AbortSignal.timeout(45000),
     headers:{
-      Accept:"application/vnd.github+json",
       Authorization:`Bearer ${token}`,
-      "X-GitHub-Api-Version":"2026-03-10",
       "Content-Type":"application/json",
     },
     body:JSON.stringify({
       model,
       temperature:0.15,
       max_tokens:2500,
+      thinking:{ type:"disabled" },
       response_format:{ type:"json_object" },
       messages:[
         {
@@ -203,7 +202,7 @@ async function summarizeBatch(items:Array<{ story:Story; evidence:string; key:st
     }),
   });
 
-  if (!response.ok) throw new Error(`GitHub Models ${response.status}: ${(await response.text()).slice(0, 180)}`);
+  if (!response.ok) throw new Error(`智谱 GLM ${response.status}: ${(await response.text()).slice(0, 180)}`);
   const payload = await response.json() as { choices?:Array<{ message?:{ content?:string } }> };
   const content = payload.choices?.[0]?.message?.content?.trim() || "";
   const parsed = JSON.parse(content.replace(/^```json\s*|\s*```$/g, "")) as { summaries?:Array<{key:string;summary:string}> };
@@ -232,7 +231,7 @@ for (let index = 0; index < data.stories.length; index += concurrency) {
 
 let enriched = 0;
 let useAi = Boolean(token);
-if (!token) console.log("未提供 GitHub Models 令牌，使用原文提炼摘要。");
+if (!token) console.log("未提供智谱 API Key，使用原文提炼摘要。");
 for (let index = 0; useAi && index < data.stories.length; index += batchSize) {
   const stories = data.stories.slice(index, index + batchSize);
   const items = stories.map((story, offset) => ({ story, evidence:evidence.get(story.id) || story.summary, key:String(index + offset) }));
@@ -243,14 +242,14 @@ for (let index = 0; useAi && index < data.stories.length; index += batchSize) {
       const summary = result.summary?.trim();
       if (story && summary && summary.length >= 60 && /[\u3400-\u9fff]/.test(summary)) {
         story.summary = summary.slice(0, 700);
-        story.summaryMethod = "github-models";
+        story.summaryMethod = "zhipu-glm-4.7-flash";
         enriched += 1;
       }
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.warn(`第 ${Math.floor(index / batchSize) + 1} 批 AI 摘要失败，使用原文提炼摘要：${message}`);
-    if (/retirement|unavailable|401|403|410/.test(message)) useAi = false;
+    if (/401|403/.test(message)) useAi = false;
   }
   if (index + batchSize < data.stories.length) await new Promise((resolveDelay) => setTimeout(resolveDelay, requestIntervalMs));
 }

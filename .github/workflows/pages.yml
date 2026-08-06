@@ -10,7 +10,6 @@ on:
 
 permissions:
   contents: read
-  models: read
   pages: write
   id-token: write
 
@@ -36,8 +35,8 @@ jobs:
       - name: 阅读原文并生成中文摘要
         continue-on-error: true
         env:
-          GH_MODELS_TOKEN: ${{ github.token }}
-          SUMMARY_MODEL: openai/gpt-4.1-mini
+          ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+          SUMMARY_MODEL: glm-4.7-flash
         run: node --experimental-strip-types scripts/enrich-summaries.ts
       - name: 配置 GitHub Pages
         uses: actions/configure-pages@v5
