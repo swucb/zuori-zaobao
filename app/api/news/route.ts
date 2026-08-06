@@ -11,6 +11,14 @@ const feeds: Feed[] = [
   { url:"https://www.chinadaily.com.cn/rss/china_rss.xml", source:"China Daily", category:"政界" },
   { url:"https://www.chinadaily.com.cn/rss/bizchina_rss.xml", source:"China Daily", category:"行业" },
   { url:"https://www.chinadaily.com.cn/rss/world_rss.xml", source:"China Daily", category:"全球" },
+  { url:"https://www.cgtn.com/subscribe/rss/section/politics.xml", source:"CGTN", category:"政界" },
+  { url:"https://www.cgtn.com/subscribe/rss/section/business.xml", source:"CGTN", category:"行业" },
+  { url:"https://www.cgtn.com/subscribe/rss/section/tech-sci.xml", source:"CGTN", category:"科技" },
+  { url:"https://www.cgtn.com/subscribe/rss/section/world.xml", source:"CGTN", category:"全球" },
+  { url:"https://news.un.org/feed/subscribe/zh/news/all/rss.xml", source:"联合国新闻", category:"全球" },
+  { url:"https://feeds.bbci.co.uk/news/world/rss.xml", source:"BBC News", category:"全球" },
+  { url:"https://feeds.bbci.co.uk/news/business/rss.xml", source:"BBC News", category:"行业" },
+  { url:"https://feeds.bbci.co.uk/news/technology/rss.xml", source:"BBC News", category:"科技" },
 ];
 
 const noise = /明星|演员|歌手|网红|恋情|绯闻|综艺|票房|红毯|娱乐|八卦|婚礼|离婚|球赛|足球|篮球|彩票|时尚|美妆|celebrity|entertainment|movie|fashion|football|basketball/i;
@@ -56,6 +64,26 @@ function parseFeed(xml:string, feed:Feed):Story[] {
   }).filter((story) => story.title && story.url && !noise.test(`${story.title} ${story.summary}`));
 }
 
+function diversify(stories:Story[], limit:number) {
+  const groups = new Map<string, Story[]>();
+  for (const story of stories.sort((a,b) => b.score - a.score)) {
+    const group = groups.get(story.source) || [];
+    group.push(story);
+    groups.set(story.source, group);
+  }
+  const sourceOrder = [...groups.keys()].sort((a,b) => (groups.get(b)?.[0].score || 0) - (groups.get(a)?.[0].score || 0));
+  const picked:Story[] = [];
+  const maxPerSource = 4;
+  for (let round = 0; round < maxPerSource && picked.length < limit; round++) {
+    for (const source of sourceOrder) {
+      const story = groups.get(source)?.[round];
+      if (story) picked.push(story);
+      if (picked.length === limit) break;
+    }
+  }
+  return picked;
+}
+
 export async function GET() {
   const responses = await Promise.allSettled(feeds.map(async (feed) => {
     const response = await fetch(feed.url, { headers:{ "User-Agent":"YesterdayBrief/1.0" }, cf:{ cacheTtl:900 } } as RequestInit & { cf:{cacheTtl:number} });
@@ -74,7 +102,7 @@ export async function GET() {
   yesterday.setDate(yesterday.getDate() - 1);
   const target = dayKey(yesterday);
   const fromYesterday = unique.filter((story) => dayKey(new Date(story.publishedAt)) === target);
-  const pool = fromYesterday.length >= 3 ? fromYesterday : unique;
-  const stories = pool.sort((a,b) => b.score - a.score).slice(0,18);
-  return NextResponse.json({ stories, editionDate:target, updatedAt:new Date().toISOString(), methodology:"公开RSS聚合、娱乐降噪、昨日筛选、时效与公共影响评分" }, { headers:{ "Cache-Control":"public, max-age=600, s-maxage=900" } });
+  const pool = fromYesterday.length >= 6 ? fromYesterday : unique;
+  const stories = diversify(pool, 18);
+  return NextResponse.json({ stories, editionDate:target, updatedAt:new Date().toISOString(), sources:[...new Set(stories.map((story) => story.source))], methodology:"公开RSS聚合、跨媒体去重、单一来源限额、娱乐降噪、昨日筛选与公共影响评分" }, { headers:{ "Cache-Control":"public, max-age=300, s-maxage=600" } });
 }
