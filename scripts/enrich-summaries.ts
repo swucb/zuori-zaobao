@@ -1,6 +1,10 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const { GoogleDecoder } = require("google-news-url-decoder") as { GoogleDecoder:new () => { decodeBatch:(urls:string[]) => Promise<Array<{status:boolean;decoded_url?:string}>> } };
 
 type Story = {
   id:string;
@@ -17,6 +21,33 @@ const token = process.env.GH_MODELS_TOKEN || process.env.GITHUB_TOKEN || "";
 const model = process.env.SUMMARY_MODEL || "openai/gpt-4.1-mini";
 const batchSize = 6;
 const requestIntervalMs = 4300;
+
+function cleanArticleUrl(value:string) {
+  try {
+    const url = new URL(value);
+    for (const key of [...url.searchParams.keys()]) {
+      if (/^(utm_|oc$|gclid$|fbclid$)/i.test(key)) url.searchParams.delete(key);
+    }
+    return url.toString();
+  } catch {
+    return value;
+  }
+}
+
+async function resolveOriginalUrls(stories:Story[]) {
+  const wrapped = stories.filter((story) => /(^|\.)news\.google\.com$/i.test(new URL(story.url).hostname));
+  if (!wrapped.length) return;
+  try {
+    const results = await new GoogleDecoder().decodeBatch(wrapped.map((story) => story.url));
+    results.forEach((result, index) => {
+      const decoded = result.status && result.decoded_url ? cleanArticleUrl(result.decoded_url) : "";
+      if (decoded && !decoded.includes("news.google.com/")) wrapped[index].url = decoded;
+    });
+    console.log(`已还原 ${wrapped.filter((story) => !story.url.includes("news.google.com/")).length}/${wrapped.length} 条媒体原始链接。`);
+  } catch (error) {
+    console.warn(`原始链接还原失败，暂时保留中转链接：${error instanceof Error ? error.message : error}`);
+  }
+}
 
 function splitSentences(value:string) {
   return value
@@ -177,6 +208,8 @@ async function summarizeBatch(items:Array<{ story:Story; evidence:string; key:st
 }
 
 const data = JSON.parse(await readFile(newsPath, "utf8")) as { stories:Story[]; [key:string]:unknown };
+data.stories.forEach((story) => { story.url = cleanArticleUrl(story.url); });
+await resolveOriginalUrls(data.stories);
 console.log(`正在抓取 ${data.stories.length} 篇原文…`);
 const evidence = new Map<string,string>();
 const concurrency = 3;
