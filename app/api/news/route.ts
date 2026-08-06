@@ -8,8 +8,6 @@ const feeds: Feed[] = [
   { url:"https://www.chinanews.com.cn/rss/china.xml", source:"中国新闻网", category:"国内" },
   { url:"https://www.chinanews.com.cn/rss/world.xml", source:"中国新闻网", category:"全球" },
   { url:"https://www.chinanews.com.cn/rss/finance.xml", source:"中国新闻网", category:"行业" },
-  { url:"https://www.chinadaily.com.cn/rss/china_rss.xml", source:"China Daily", category:"国内" },
-  { url:"https://www.chinadaily.com.cn/rss/world_rss.xml", source:"China Daily", category:"全球" },
   { url:"https://www.cgtn.com/subscribe/rss/section/politics.xml", source:"CGTN", category:"政治" },
   { url:"https://www.cgtn.com/subscribe/rss/section/business.xml", source:"CGTN", category:"行业" },
   { url:"https://www.cgtn.com/subscribe/rss/section/tech-sci.xml", source:"CGTN", category:"科技" },
@@ -71,7 +69,7 @@ function parsePublishedDate(raw:string) {
 }
 function classify(title:string, summary:string, feed:Feed) {
   const text = `${title} ${summary}`;
-  const chinaRelated = chineseOfficial.test(feed.source) || china.test(text);
+  const chinaRelated = feed.category === "国内" || domesticPolicySource.test(feed.source) || chineseOfficial.test(feed.source) || china.test(text);
   const categories:string[] = [];
   if (chinaRelated && (feed.category === "政治" || (domesticPolicySource.test(feed.source) && politicalSignal.test(text)))) categories.push("政治");
   if (chinaRelated && (feed.category === "行业" || industry.test(text))) categories.push("行业");
@@ -145,7 +143,7 @@ async function translateStory(story:Story):Promise<Story | null> {
 
 async function translateStories(stories:Story[]) {
   const translated:Story[] = [];
-  const batchSize = 12;
+  const batchSize = 24;
   for (let index = 0; index < stories.length; index += batchSize) {
     const batch = await Promise.all(stories.slice(index, index + batchSize).map(translateStory));
     translated.push(...batch.filter((story): story is Story => story !== null));

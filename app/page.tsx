@@ -39,12 +39,13 @@ export default function Home() {
       const cached = JSON.parse(localStorage.getItem(newsCacheKey) || "null");
       if (cached && Array.isArray(cached.stories) && cached.stories.length && Date.now() - cached.savedAt < 72 * 36e5) {
         setStories(cached.stories);
+        setLoading(false);
       }
     } catch {
       // Ignore a damaged local cache and fetch a fresh edition.
     }
 
-    fetch("/api/news?v=multi-sections-20260806-1")
+    fetch("/api/news?v=multi-sections-20260806-2")
       .then((response) => (response.ok ? response.json() : Promise.reject()))
       .then((data) => {
         if (Array.isArray(data.stories) && data.stories.length) {
@@ -57,7 +58,7 @@ export default function Home() {
               return healthy || !cached.length ? fresh : cached;
             });
             const uniqueMerged = merged.filter((story, index, items) => items.findIndex((candidate) => candidate.id === story.id) === index);
-            if (categories.every((category) => uniqueMerged.filter((story) => story.categories?.includes(category)).length >= 3)) {
+            if (uniqueMerged.length) {
               localStorage.setItem(newsCacheKey, JSON.stringify({ savedAt:Date.now(), editionDate:data.editionDate, stories:uniqueMerged }));
             }
             return uniqueMerged;
