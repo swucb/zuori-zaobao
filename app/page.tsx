@@ -47,7 +47,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/news")
+    fetch("/api/news?v=policy-sources-20260806-2", { cache: "no-store" })
       .then((response) => (response.ok ? response.json() : Promise.reject()))
       .then((data) => {
         if (Array.isArray(data.stories) && data.stories.length) setStories(data.stories);
