@@ -28,7 +28,7 @@ const fallbackStories: Story[] = [
   },
 ];
 
-const filters = ["全部", "政策", "行业", "科技", "全球"];
+const filters = ["全部", "政治", "行业", "科技", "全球"];
 
 function yesterdayLabel() {
   const date = new Date();
@@ -47,7 +47,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/news?v=policy-sources-20260806-2", { cache: "no-store" })
+    fetch(`/api/news?v=politics-20260806-1&t=${Date.now()}`, { cache: "no-store" })
       .then((response) => (response.ok ? response.json() : Promise.reject()))
       .then((data) => {
         if (Array.isArray(data.stories) && data.stories.length) setStories(data.stories);
@@ -80,7 +80,7 @@ export default function Home() {
       <section className="intro" id="top">
         <p className="eyebrow">THE MORNING BRIEF · {yesterdayLabel()}</p>
         <h1>昨天，<br />真正重要的事。</h1>
-        <p className="dek">替你读完公开新闻源。先看国内政策，再看中国行业与科技，最后掌握中美及全球大势。</p>
+        <p className="dek">替你读完公开新闻源。先看中国政治，再看中国行业与科技，最后掌握中美及全球大势。</p>
         <div className="meta-row">
           <span>{loading ? "正在汇总…" : `${stories.length} 条精选`}</span>
           <span>预计阅读 {Math.max(2, Math.ceil(stories.length * 0.65))} 分钟</span>
@@ -130,7 +130,6 @@ export default function Home() {
             <h2 id="story-title">{active.title}</h2>
             <div className="summary-label">早报摘要</div>
             <p>{active.summary}</p>
-            <p>{active.context}</p>
             {active.url !== "#" && <a className="source-link" href={active.url} target="_blank" rel="noreferrer">查看原报道 ↗</a>}
           </section>
         </div>
