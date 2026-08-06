@@ -1,15 +1,14 @@
 import { NextResponse } from "next/server";
 
-type Feed = { url: string; source: string; category: string; boost?: number; policyOnly?: boolean; centralOnly?: boolean };
-type Story = { id:string; title:string; summary:string; context:string; category:string; source:string; url:string; publishedAt:string; score:number };
+type Feed = { url: string; source: string; category: string; boost?: number; policyOnly?: boolean; centralOnly?: boolean; trustedAggregate?: boolean };
+type Story = { id:string; title:string; summary:string; context:string; category:string; categories:string[]; source:string; url:string; publishedAt:string; score:number };
 
 const feeds: Feed[] = [
-  { url:"https://www.chinanews.com.cn/rss/importnews.xml", source:"中国新闻网", category:"政治" },
-  { url:"https://www.chinanews.com.cn/rss/china.xml", source:"中国新闻网", category:"政治" },
+  { url:"https://www.chinanews.com.cn/rss/importnews.xml", source:"中国新闻网", category:"国内" },
+  { url:"https://www.chinanews.com.cn/rss/china.xml", source:"中国新闻网", category:"国内" },
   { url:"https://www.chinanews.com.cn/rss/world.xml", source:"中国新闻网", category:"全球" },
   { url:"https://www.chinanews.com.cn/rss/finance.xml", source:"中国新闻网", category:"行业" },
-  { url:"https://www.chinadaily.com.cn/rss/china_rss.xml", source:"China Daily", category:"政治" },
-  { url:"https://www.chinadaily.com.cn/rss/bizchina_rss.xml", source:"China Daily", category:"行业" },
+  { url:"https://www.chinadaily.com.cn/rss/china_rss.xml", source:"China Daily", category:"国内" },
   { url:"https://www.chinadaily.com.cn/rss/world_rss.xml", source:"China Daily", category:"全球" },
   { url:"https://www.cgtn.com/subscribe/rss/section/politics.xml", source:"CGTN", category:"政治" },
   { url:"https://www.cgtn.com/subscribe/rss/section/business.xml", source:"CGTN", category:"行业" },
@@ -27,45 +26,63 @@ const feeds: Feed[] = [
   { url:"https://www.pbs.org/newshour/feeds/rss/headlines", source:"PBS NewsHour", category:"全球" },
   { url:"https://www.pbs.org/newshour/feeds/rss/politics", source:"PBS NewsHour", category:"全球" },
   { url:"https://feeds.npr.org/1001/rss.xml", source:"NPR", category:"全球" },
-  { url:"http://www.xinhuanet.com/politics/news_politics.xml", source:"新华网", category:"政治", boost:25, policyOnly:true },
   { url:"https://news.google.com/rss/search?q=site%3Agov.cn%20when%3A2d%20(%E4%B8%AD%E5%9B%BD%20OR%20%E4%B8%AD%E6%96%B9%20OR%20%E4%B8%AD%E5%A4%AE%20OR%20%E5%9B%BD%E5%8A%A1%E9%99%A2%20OR%20%E4%B9%A0%E8%BF%91%E5%B9%B3%20OR%20%E6%9D%8E%E5%BC%BA%20OR%20%E4%BB%BB%E5%85%8D)&hl=zh-CN&gl=CN&ceid=CN%3Azh-Hans", source:"中国政府网", category:"政治", boost:28, policyOnly:true },
   { url:"https://news.google.com/rss/search?q=site%3Anews.cn%2Fpolitics%20when%3A2d%20(%E4%B8%AD%E5%9B%BD%20OR%20%E4%B8%AD%E6%96%B9%20OR%20%E4%B8%AD%E5%A4%AE%20OR%20%E5%9B%BD%E5%AE%B6%E4%B8%BB%E5%B8%AD%20OR%20%E5%9B%BD%E5%8A%A1%E9%99%A2)&hl=zh-CN&gl=CN&ceid=CN%3Azh-Hans", source:"新华时政", category:"政治", boost:25, policyOnly:true },
   { url:"https://news.google.com/rss/search?q=site%3Apeople.com.cn%20when%3A2d%20(%E6%97%B6%E6%94%BF%20OR%20%E4%B8%AD%E6%96%B9%20OR%20%E4%B8%AD%E5%A4%AE%20OR%20%E4%B9%A0%E8%BF%91%E5%B9%B3%20OR%20%E6%9D%8E%E5%BC%BA%20OR%20%E4%BA%BA%E4%BA%8B)&hl=zh-CN&gl=CN&ceid=CN%3Azh-Hans", source:"人民网", category:"政治", boost:24, policyOnly:true },
+  { url:"https://news.google.com/rss/search?q=when%3A2d%20(%E4%B8%AD%E5%9B%BD%E7%BB%8F%E6%B5%8E%20OR%20%E4%B8%AD%E5%9B%BD%E5%88%B6%E9%80%A0%20OR%20%E4%B8%AD%E5%9B%BD%E9%87%91%E8%9E%8D%20OR%20%E4%B8%AD%E5%9B%BD%E4%BC%81%E4%B8%9A%20OR%20%E5%95%86%E5%8A%A1%E9%83%A8%20OR%20%E5%B7%A5%E4%BF%A1%E9%83%A8)%20-%E5%A8%B1%E4%B9%90&hl=zh-CN&gl=CN&ceid=CN%3Azh-Hans", source:"国内财经媒体", category:"行业", boost:18, trustedAggregate:true },
+  { url:"https://news.google.com/rss/search?q=when%3A2d%20(%E4%B8%AD%E5%9B%BD%E7%A7%91%E6%8A%80%20OR%20%E4%B8%AD%E5%9B%BD%E4%BA%BA%E5%B7%A5%E6%99%BA%E8%83%BD%20OR%20%E4%B8%AD%E5%9B%BD%E8%8A%AF%E7%89%87%20OR%20%E4%B8%AD%E5%9B%BD%E8%88%AA%E5%A4%A9%20OR%20%E7%A7%91%E6%8A%80%E9%83%A8)%20-%E5%A8%B1%E4%B9%90&hl=zh-CN&gl=CN&ceid=CN%3Azh-Hans", source:"国内科技媒体", category:"科技", boost:18, trustedAggregate:true },
+  { url:"https://news.google.com/rss/search?q=site%3Anews.cn%20when%3A2d%20(%E4%BA%BA%E5%B7%A5%E6%99%BA%E8%83%BD%20OR%20%E8%8A%AF%E7%89%87%20OR%20%E8%88%AA%E5%A4%A9%20OR%20%E7%A7%91%E6%8A%80)&hl=zh-CN&gl=CN&ceid=CN%3Azh-Hans", source:"新华科技", category:"科技", boost:22 },
+  { url:"https://news.google.com/rss/search?q=site%3Apeople.com.cn%20when%3A2d%20(%E4%BA%BA%E5%B7%A5%E6%99%BA%E8%83%BD%20OR%20%E8%8A%AF%E7%89%87%20OR%20%E8%88%AA%E5%A4%A9%20OR%20%E7%A7%91%E6%8A%80)&hl=zh-CN&gl=CN&ceid=CN%3Azh-Hans", source:"人民网科技", category:"科技", boost:20 },
+  { url:"https://news.google.com/rss/search?q=when%3A2d%20(%E4%B8%AD%E7%BE%8E%20OR%20%E4%B8%AD%E5%9B%BD%E7%BE%8E%E5%9B%BD%20OR%20%E5%85%A8%E7%90%83%E7%BB%8F%E6%B5%8E%20OR%20%E5%9B%BD%E9%99%85%E5%B1%80%E5%8A%BF)%20-%E5%A8%B1%E4%B9%90&hl=zh-CN&gl=CN&ceid=CN%3Azh-Hans", source:"全球中文媒体", category:"全球", boost:16, trustedAggregate:true },
 ];
 
-const noise = /明星|演员|歌手|网红|恋情|绯闻|综艺|票房|红毯|娱乐|八卦|婚礼|离婚|球赛|足球|篮球|彩票|时尚|美妆|企业名称.*所属地区|备案状态|政府采购|采购电子交易|招标|投标|项目申报|国务院要闻|国务院信息|地点：|celebrity|entertainment|movie|fashion|football|basketball/i;
+const noise = /明星|演员|歌手|网红|恋情|绯闻|综艺|票房|红毯|娱乐|八卦|婚礼|离婚|球赛|足球|篮球|男排|女排|排球|世界杯|体育|彩票|抽奖|比特币|加密货币|OKX|时尚|美妆|企业名称.*所属地区|备案状态|政府采购|采购电子交易|招标|投标|项目申报|国务院要闻|国务院信息|地点：|celebrity|entertainment|movie|fashion|football|basketball/i;
 const high = /中央|国务院|政策|改革|经济|金融|利率|贸易|关税|外交|冲突|战争|能源|芯片|人工智能|气候|监管|选举|就业|GDP|inflation|election|government|policy|economy|trade|tariff|war|energy|chip|artificial intelligence|climate/i;
 const tech = /科技|技术|人工智能|芯片|半导体|算力|航天|科研|science|technology|AI\b|chip|semiconductor|space/i;
 const china = /中国|中方|我国|国内|北京|中美|国务院|党中央|工信部|科技部|商务部|人民币|A股|China|Chinese|Beijing|Xi Jinping/i;
 const unitedStates = /美国|美方|美联储|白宫|华盛顿|国会|特朗普|拜登|美元|美股|United States|U\.S\.|American|White House|Federal Reserve|Congress|Trump|Biden/i;
-const policy = /中国|中方|我国|习近平|李强|赵乐际|王沪宁|蔡奇|丁薛祥|李希|国家领导|国家主席|总理|任免|人事|干部|党委|政治局|国务院|中央|两会|政府|政策|改革|部长|主席|书记|局长|官员|获刑|落马|审查|法律|法案|条例|规定|外交|会议|部署|召开|强调|会见|主持|出席|印发|讲话|考察|决定|China|Chinese|Beijing|Xi Jinping|govern|policy|minister|official|politburo|meeting|law|regulation|diploma/i;
+const politicalSignal = /中方|习近平|李强|赵乐际|王沪宁|蔡奇|丁薛祥|李希|国家领导|国家主席|总理|任免|人事|干部|党委|政治局|国务院|中央|两会|政府|政策|改革|部长|主席|书记|局长|官员|获刑|落马|审查|法律|法案|条例|规定|外交|会议|部署|召开|强调|会见|主持|出席|印发|讲话|考察|决定|Xi Jinping|govern|policy|minister|official|politburo|meeting|law|regulation|diploma/i;
 const centralPolicy = /中共中央|党中央|中央政治局|国务院|习近平|李强|全国人大|全国政协|国家主席|国家工作人员|任免|外交部|中央纪委|中央组织部|最高人民法院|最高人民检察院/;
 const industry = /经济|企业|产业|制造|工业|投资|消费|出口|进口|贸易|金融|银行|证券|房地产|就业|市场|供应链|产量|销量|economic|economy|business|industry|manufactur|investment|consumer|export|import|trade|financial|bank|market|supply chain/i;
 const systemWide = /全球|世界|国际|联合国|多边|世贸|贸易体系|供应链|金融市场|能源市场|气候变化|G20|APEC|WTO|IMF|global|world|international|United Nations|multilateral|supply chain|financial markets|climate/i;
 const otherCountry = /英国|法国|德国|俄罗斯|俄总统|普京|乌克兰|伊朗|以色列|日本|韩国|印度|巴西|墨西哥|加拿大|澳大利亚|意大利|西班牙|土耳其|叙利亚|黎巴嫩|卡塔尔|沙特|朝鲜|越南|菲律宾|泰国|马来西亚|新加坡|霍尔木兹|加沙|Indonesia|Britain|UK\b|France|Germany|Russia|Ukraine|Iran|Israel|Japan|Korea|India|Brazil|Mexico|Canada|Australia|Italy|Spain|Turkey|Syria|Lebanon|Qatar|Saudi|Vietnam|Philippines|Thailand|Malaysia|Singapore|Hormuz|Gaza/i;
 const chineseOfficial = /工业和信息化部|科学技术部|商务部/;
 const domesticPolicySource = /^(中国新闻网|China Daily|CGTN|工业和信息化部|科学技术部|商务部|新华网|中国政府网|新华时政|人民网)$/;
+const trustedNewsSource = /新华社|新华网|人民网|央视|中国新闻网|中国日报|China Daily|CGTN|财新|第一财经|经济日报|证券时报|上海证券报|中国证券报|21世纪经济报道|每日经济新闻|澎湃|界面新闻|财联社|科技日报|工人日报|光明日报|环球时报|路透|彭博/i;
 
 function decode(value:string) {
-  return value.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,"$1").replace(/<[^>]+>/g," ")
+  return value.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,"$1")
     .replace(/&nbsp;/g," ").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&#39;/g,"'")
+    .replace(/<[^>]+>/g," ")
     .replace(/\s+/g," ").trim();
 }
 function field(xml:string, name:string) {
   return decode(xml.match(new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${name}>`,"i"))?.[1] || "");
 }
+function parsePublishedDate(raw:string) {
+  if (!raw) return "";
+  const numeric = raw.trim();
+  const date = /^\d{13}$/.test(numeric)
+    ? new Date(Number(numeric))
+    : /^\d{10}$/.test(numeric)
+      ? new Date(Number(numeric) * 1000)
+      : new Date(raw);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+}
 function classify(title:string, summary:string, feed:Feed) {
   const text = `${title} ${summary}`;
   const chinaRelated = chineseOfficial.test(feed.source) || china.test(text);
-  if (domesticPolicySource.test(feed.source) && chinaRelated && (feed.category === "政治" || policy.test(`${title} ${summary}`))) return "政治";
-  if (tech.test(text)) return chinaRelated ? "科技" : "全球";
-  if (chinaRelated && (feed.category === "行业" || industry.test(text))) return "行业";
-  return "全球";
+  const categories:string[] = [];
+  if (chinaRelated && (feed.category === "政治" || (domesticPolicySource.test(feed.source) && politicalSignal.test(text)))) categories.push("政治");
+  if (chinaRelated && (feed.category === "行业" || industry.test(text))) categories.push("行业");
+  if (chinaRelated && (feed.category === "科技" || tech.test(text))) categories.push("科技");
+  if (feed.category === "全球" || systemWide.test(text) || unitedStates.test(text) || !categories.length) categories.push("全球");
+  return [...new Set(categories)];
 }
 function inChinaUSScope(story:Story) {
   const text = `${story.title} ${story.summary}`;
   const chinaUS = china.test(text) || unitedStates.test(text) || chineseOfficial.test(story.source);
-  const domesticPolicyStory = story.category === "政治" && domesticPolicySource.test(story.source);
+  const domesticPolicyStory = story.categories.includes("政治") && domesticPolicySource.test(story.source);
   if (otherCountry.test(story.title) && !china.test(story.title)) return false;
   return chinaUS || domesticPolicyStory || systemWide.test(text);
 }
@@ -80,16 +97,23 @@ function contextFor(category:string) {
 }
 function parseFeed(xml:string, feed:Feed):Story[] {
   return (xml.match(/<item[\s\S]*?<\/item>/gi) || []).map((item, index) => {
-    const title = field(item,"title").replace(/\s+-\s+(?:mofcom\.gov\.cn|most\.gov\.cn|gov\.cn|news\.cn|people\.com\.cn|商务部|新华网|人民网)(?:\s+-\s+(?:商务部|新华网|人民网))?\s*$/i, "");
+    const itemSource = field(item,"source") || feed.source;
+    const sourceSuffix = itemSource.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+    const title = field(item,"title")
+      .replace(new RegExp(`\\s+-\\s+${sourceSuffix}\\s*$`,"i"),"")
+      .replace(/\s+-\s+(?:mofcom\.gov\.cn|most\.gov\.cn|gov\.cn|news\.cn|people\.com\.cn|商务部|新华网|人民网)(?:\s+-\s+(?:商务部|新华网|人民网))?\s*$/i, "");
     const raw = field(item,"description") || field(item,"content:encoded");
-    const summary = raw.length > 260 ? `${raw.slice(0,257)}…` : raw;
+    const repeatedTitle = raw.replace(/[\s，。、“”‘’：:！!？?]/g,"").startsWith(title.replace(/[\s，。、“”‘’：:！!？?]/g,"").slice(0,24));
+    const cleanSummary = repeatedTitle ? `公开新闻索引收录了这则来自${itemSource}的报道，具体事实与完整语境请查看原报道。` : raw;
+    const summary = cleanSummary.length > 260 ? `${cleanSummary.slice(0,257)}…` : cleanSummary;
     const url = field(item,"link") || field(item,"guid");
-    const publishedAt = field(item,"pubDate") || new Date().toISOString();
-    const category = classify(title, summary, feed);
-    const age = Math.max(0, (Date.now() - new Date(publishedAt).getTime()) / 36e5);
+    const publishedAt = parsePublishedDate(field(item,"pubDate") || field(item,"dc:date") || field(item,"published"));
+    const categories = classify(title, summary, feed);
+    const category = categories[0] || "全球";
+    const age = publishedAt ? Math.max(0, (Date.now() - new Date(publishedAt).getTime()) / 36e5) : Number.POSITIVE_INFINITY;
     const score = Math.round(60 + (feed.boost || 0) + (high.test(`${title} ${summary}`) ? 28 : 0) + Math.max(0, 18 - age / 2) - index * .7);
-    return { id:`${feed.source}-${index}-${title.slice(0,18)}`, title, summary:summary || "原始新闻源未提供摘要，请点击查看完整报道。", context:contextFor(category), category, source:feed.source, url, publishedAt, score };
-  }).filter((story) => story.title && story.url && (!feed.policyOnly || story.category === "政治") && (!feed.centralOnly || centralPolicy.test(story.title)) && !noise.test(`${story.title} ${story.summary}`) && inChinaUSScope(story));
+    return { id:`${feed.source}-${index}-${title.slice(0,18)}`, title, summary:summary || "原始新闻源未提供摘要，请点击查看完整报道。", context:contextFor(category), category, categories, source:itemSource, url, publishedAt, score };
+  }).filter((story) => story.title && story.url && story.publishedAt && (!feed.trustedAggregate || trustedNewsSource.test(story.source)) && (!feed.policyOnly || (story.categories.includes("政治") && politicalSignal.test(`${story.title} ${story.summary}`))) && (!feed.centralOnly || centralPolicy.test(story.title)) && !noise.test(`${story.title} ${story.summary}`) && inChinaUSScope(story));
 }
 
 function needsTranslation(story:Story) {
@@ -98,7 +122,7 @@ function needsTranslation(story:Story) {
 
 async function translateStory(story:Story):Promise<Story | null> {
   if (!needsTranslation(story)) return story;
-  const query = `${story.title}\n\n${story.summary}`;
+  const query = `${story.title}\n【摘要】\n${story.summary}`;
   const endpoint = new URL("https://translate.googleapis.com/translate_a/single");
   endpoint.searchParams.set("client", "gtx");
   endpoint.searchParams.set("sl", "en");
@@ -106,12 +130,12 @@ async function translateStory(story:Story):Promise<Story | null> {
   endpoint.searchParams.set("dt", "t");
   endpoint.searchParams.set("q", query);
   try {
-    const response = await fetch(endpoint, { cf:{ cacheTtl:86400 } } as RequestInit & { cf:{cacheTtl:number} });
+    const response = await fetch(endpoint, { signal:AbortSignal.timeout(8000), cf:{ cacheTtl:86400 } } as RequestInit & { cf:{cacheTtl:number} });
     if (!response.ok) return null;
     const payload = await response.json() as [Array<[string]>];
     const translated = payload[0]?.map((segment) => segment[0]).join("").trim();
-    const [title, ...summaryParts] = translated.split(/\n\s*\n/);
-    const summary = summaryParts.join("\n\n").trim();
+    const [title, ...summaryParts] = translated.split("【摘要】");
+    const summary = summaryParts.join("【摘要】").trim();
     if (!title || !summary || !/[\u3400-\u9fff]/.test(`${title}${summary}`)) return null;
     return { ...story, title, summary };
   } catch {
@@ -150,7 +174,7 @@ function diversify(stories:Story[]) {
 
 export async function GET() {
   const responses = await Promise.allSettled(feeds.map(async (feed) => {
-    const response = await fetch(feed.url, { headers:{ "User-Agent":"YesterdayBrief/1.0" }, cf:{ cacheTtl:900 } } as RequestInit & { cf:{cacheTtl:number} });
+    const response = await fetch(feed.url, { signal:AbortSignal.timeout(8000), headers:{ "User-Agent":"YesterdayBrief/1.0" }, cf:{ cacheTtl:900 } } as RequestInit & { cf:{cacheTtl:number} });
     if (!response.ok) throw new Error("feed unavailable");
     return parseFeed(await response.text(), feed);
   }));
@@ -169,13 +193,27 @@ export async function GET() {
     const published = new Date(story.publishedAt);
     return !Number.isNaN(published.getTime()) && dayKey(published) === target;
   });
-  const yesterdayPolitics = fromYesterday.filter((story) => story.category === "政治");
-  const recentPolitics = unique.filter((story) => story.category === "政治");
-  const politicsPool = yesterdayPolitics.length >= 8 ? yesterdayPolitics : recentPolitics;
-  const pool = [...politicsPool, ...fromYesterday.filter((story) => story.category !== "政治")]
-    .filter((story, index, items) => items.findIndex((candidate) => candidate.id === story.id) === index);
-  const translated = await translateStories(pool);
   const categoryOrder = ["政治", "行业", "科技", "全球"];
+  const minimumByCategory:Record<string,number> = { 政治:10, 行业:10, 科技:10, 全球:12 };
+  const recentCutoff = Date.now() - 72 * 36e5;
+  const pool = categoryOrder.flatMap((category) => {
+    const yesterdayItems = fromYesterday.filter((story) => story.categories.includes(category));
+    const recentItems = unique
+      .filter((story) => story.categories.includes(category) && new Date(story.publishedAt).getTime() >= recentCutoff)
+      .sort((a,b) => b.score - a.score);
+    const selected = [...yesterdayItems];
+    const selectedIds = new Set(selected.map((story) => story.id));
+    for (const candidate of recentItems) {
+      if (selected.length >= minimumByCategory[category]) break;
+      if (!selectedIds.has(candidate.id)) {
+        selected.push(candidate);
+        selectedIds.add(candidate.id);
+      }
+    }
+    return selected;
+  });
+  const translated = await translateStories(pool.filter((story, index, items) => items.findIndex((candidate) => candidate.id === story.id) === index));
   const stories = categoryOrder.flatMap((category) => diversify(translated.filter((story) => story.category === category)));
-  return NextResponse.json({ stories, editionDate:target, updatedAt:new Date().toISOString(), sources:[...new Set(stories.map((story) => story.source))], methodology:"公开RSS聚合、跨媒体轮排、娱乐降噪、昨日筛选与公共影响评分；政治栏目在昨日不足时补充最近两日中方与国家领导人相关报道" }, { headers:{ "Cache-Control":"public, max-age=300, s-maxage=3600, stale-while-revalidate=300" } });
+  const counts = Object.fromEntries(categoryOrder.map((category) => [category, stories.filter((story) => story.categories.includes(category)).length]));
+  return NextResponse.json({ stories, counts, editionDate:target, updatedAt:new Date().toISOString(), sources:[...new Set(stories.map((story) => story.source))], methodology:"每栏以昨日新闻为主；数量不足时分别补充最近三天内容，避免某一栏因单日源波动而为空" }, { headers:{ "Cache-Control":"public, max-age=300, s-maxage=3600, stale-while-revalidate=300" } });
 }
