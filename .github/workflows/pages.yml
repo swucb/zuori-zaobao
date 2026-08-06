@@ -1,12 +1,8 @@
-name: 每日早报与 GitHub Pages
+name: 发布网站
 
 on:
   push:
     branches: [main]
-  workflow_dispatch:
-  schedule:
-    - cron: "30 7 * * *"
-      timezone: "Asia/Shanghai"
 
 permissions:
   contents: read
@@ -23,21 +19,6 @@ jobs:
     steps:
       - name: 检出代码
         uses: actions/checkout@v6
-      - name: 准备 Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: npm
-      - name: 安装依赖
-        run: npm ci
-      - name: 生成当日新闻快照
-        run: node --experimental-strip-types scripts/generate-news.ts
-      - name: 阅读原文并生成中文摘要
-        continue-on-error: true
-        env:
-          ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
-          SUMMARY_MODEL: glm-4.7-flash
-        run: node --experimental-strip-types scripts/enrich-summaries.ts
       - name: 配置 GitHub Pages
         uses: actions/configure-pages@v5
       - name: 上传静态站点
