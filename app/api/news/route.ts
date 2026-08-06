@@ -102,7 +102,7 @@ function parseFeed(xml:string, feed:Feed):Story[] {
       .replace(/\s+-\s+(?:mofcom\.gov\.cn|most\.gov\.cn|gov\.cn|news\.cn|people\.com\.cn|商务部|新华网|人民网)(?:\s+-\s+(?:商务部|新华网|人民网))?\s*$/i, "");
     const raw = field(item,"description") || field(item,"content:encoded");
     const repeatedTitle = raw.replace(/[\s，。、“”‘’：:！!？?]/g,"").startsWith(title.replace(/[\s，。、“”‘’：:！!？?]/g,"").slice(0,24));
-    const cleanSummary = repeatedTitle ? `公开新闻索引收录了这则来自${itemSource}的报道，具体事实与完整语境请查看原报道。` : raw;
+    const cleanSummary = repeatedTitle ? "" : raw;
     const summary = cleanSummary.length > 260 ? `${cleanSummary.slice(0,257)}…` : cleanSummary;
     const url = field(item,"link") || field(item,"guid");
     const publishedAt = parsePublishedDate(field(item,"pubDate") || field(item,"dc:date") || field(item,"published"));
@@ -110,7 +110,7 @@ function parseFeed(xml:string, feed:Feed):Story[] {
     const category = categories[0] || "全球";
     const age = publishedAt ? Math.max(0, (Date.now() - new Date(publishedAt).getTime()) / 36e5) : Number.POSITIVE_INFINITY;
     const score = Math.round(60 + (feed.boost || 0) + (high.test(`${title} ${summary}`) ? 28 : 0) + Math.max(0, 18 - age / 2) - index * .7);
-    return { id:`${feed.source}-${index}-${title.slice(0,18)}`, title, summary:summary || "原始新闻源未提供摘要，请点击查看完整报道。", context:contextFor(category), category, categories, source:itemSource, url, publishedAt, score };
+    return { id:`${feed.source}-${index}-${title.slice(0,18)}`, title, summary:summary || "", context:contextFor(category), category, categories, source:itemSource, url, publishedAt, score };
   }).filter((story) => story.title && story.url && story.publishedAt && (!feed.trustedAggregate || trustedNewsSource.test(story.source)) && (!feed.policyOnly || (story.categories.includes("政治") && politicalSignal.test(`${story.title} ${story.summary}`))) && (!feed.centralOnly || centralPolicy.test(story.title)) && !noise.test(`${story.title} ${story.summary}`) && inChinaUSScope(story));
 }
 

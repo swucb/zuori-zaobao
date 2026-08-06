@@ -19,8 +19,8 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const newsPath = resolve(root, "public-site/news.json");
 const token = process.env.ZHIPU_API_KEY || "";
 const model = process.env.SUMMARY_MODEL || "glm-4.7-flash";
-const batchSize = 1;
-const requestIntervalMs = 900;
+const batchSize = 4;
+const requestIntervalMs = 1800;
 
 function cleanArticleUrl(value:string) {
   try {
@@ -184,7 +184,7 @@ async function summarizeBatch(items:Array<{ story:Story; evidence:string; key:st
     title:story.title,
     source:story.source,
     existing_summary:story.summary,
-    article_text:evidence.slice(0, 1200),
+      article_text:evidence.slice(0, 1800),
   }));
 
   const response = await fetch("https://open.bigmodel.cn/api/paas/v4/chat/completions", {
@@ -203,7 +203,7 @@ async function summarizeBatch(items:Array<{ story:Story; evidence:string; key:st
       messages:[
         {
           role:"system",
-          content:"你是严谨的中文早报编辑。只能依据给定标题、已有摘要和文章正文，不得使用外部知识，不得猜测。为每条新闻写一至两段中文摘要，共120至260个汉字；第一段说明发生了什么，第二段仅在材料足够时说明背景、数据或影响。保留关键主体、数字、时间和政策名称；删除宣传性套话；英文材料必须译成自然中文。若正文抓取不足，应保守改写已有摘要，不得虚构。只输出JSON。",
+          content:"你是严谨的中文早报编辑。每项材料彼此独立，绝对不得把一项的事实写进另一项。只能依据对应项的标题、已有摘要和文章正文，不得使用外部知识，不得猜测。为每条新闻写一至两段中文摘要，共80至260个汉字；第一段说明发生了什么，第二段仅在材料足够时说明背景、数据或影响。保留关键主体、数字、时间和政策名称；删除宣传性套话；英文材料必须译成自然中文。若正文抓取不足，应保守概括标题和已有摘要，并明确材料边界。严格原样返回每项key，顺序与输入一致，只输出JSON。",
         },
         {
           role:"user",
@@ -220,11 +220,25 @@ async function summarizeBatch(items:Array<{ story:Story; evidence:string; key:st
   return parsed.summaries || [];
 }
 
+async function summarizeWithRetry(items:Array<{ story:Story; evidence:string; key:string }>) {
+  let lastError:unknown;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await summarizeBatch(items);
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/429|408|500|502|503|504|fetch failed|timeout/i.test(message) || attempt === 2) throw error;
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 2500 * (attempt + 1)));
+    }
+  }
+  throw lastError;
+}
+
 function relevantSummary(title:string, summary:string) {
   const titlePairs = bigramSet(title);
   const parts = summary.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
-  const relevant = parts.filter((part, index) => {
-    if (index === 0) return true;
+  const relevant = parts.filter((part) => {
     const paragraphPairs = bigramSet(part);
     let shared = 0;
     for (const pair of titlePairs) if (paragraphPairs.has(pair)) shared += 1;
@@ -265,14 +279,13 @@ let useAi = Boolean(token);
 if (!token) console.log("未提供智谱 API Key，使用原文提炼摘要。");
 for (let index = 0; useAi && index < data.stories.length; index += batchSize) {
   const stories = data.stories.slice(index, index + batchSize);
-  const items = stories.map((story, offset) => ({ story, evidence:evidence.get(story.id) || story.summary, key:String(index + offset) }));
+  const items = stories.map((story, offset) => ({ story, evidence:evidence.get(story.id) || story.summary, key:`ITEM_${String.fromCharCode(65 + offset)}` }));
   try {
-    const summaries = await summarizeBatch(items);
-    for (const result of summaries.slice(0, 1)) {
-      // Each request contains exactly one story. Never trust a model-generated
-      // index here: some models normalize every key to "0", which can overwrite
-      // an unrelated story and cause summary crosstalk.
-      const story = stories[0];
+    const summaries = await summarizeWithRetry(items);
+    for (const result of summaries) {
+      const itemIndex = items.findIndex((item) => item.key === result.key);
+      if (itemIndex < 0) continue;
+      const story = stories[itemIndex];
       const summary = story && result.summary ? relevantSummary(story.title, result.summary.trim()) : "";
       if (story && summary && summary.length >= 35 && /[\u3400-\u9fff]/.test(summary)) {
         story.summary = summary.slice(0, 700);

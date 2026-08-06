@@ -13,10 +13,11 @@ type Story = {
   url: string;
   publishedAt: string;
   score: number;
+  summaryMethod?: "zhipu-glm-4.7-flash" | "source-extractive";
 };
 
 const filters = ["全部", "政治", "行业", "科技", "全球"];
-const newsCacheKey = "zuori-zaobao-stories-v6";
+const newsCacheKey = "zuori-zaobao-stories-v7";
 
 function yesterdayLabel() {
   const date = new Date();
@@ -143,7 +144,7 @@ export default function Home() {
             <button className="close" onClick={() => setActive(null)} aria-label="关闭">×</button>
             <div className="sheet-top"><span>{active.categories.join(" · ")}</span><span>{active.source}</span></div>
             <h2 id="story-title">{active.title}</h2>
-            <div className="summary-label">早报摘要</div>
+            <div className="summary-label">{active.summaryMethod === "zhipu-glm-4.7-flash" ? "智谱摘要" : active.summaryMethod === "source-extractive" ? "原文提炼" : "新闻源摘要"}</div>
             <p>{active.summary}</p>
             {active.url !== "#" && <a className="source-link" href={active.url} target="_blank" rel="noreferrer">查看原报道 ↗</a>}
           </section>
