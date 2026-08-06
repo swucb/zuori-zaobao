@@ -19,8 +19,8 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const newsPath = resolve(root, "public-site/news.json");
 const token = process.env.ZHIPU_API_KEY || "";
 const model = process.env.SUMMARY_MODEL || "glm-4.7-flash";
-const batchSize = 4;
-const requestIntervalMs = 1800;
+const minimumLongArticleLength = 900;
+const requestIntervalMs = 6500;
 
 function cleanArticleUrl(value:string) {
   try {
@@ -184,7 +184,7 @@ async function summarizeBatch(items:Array<{ story:Story; evidence:string; key:st
     title:story.title,
     source:story.source,
     existing_summary:story.summary,
-      article_text:evidence.slice(0, 1800),
+    article_text:evidence.slice(0, 4000),
   }));
 
   const response = await fetch("https://open.bigmodel.cn/api/paas/v4/chat/completions", {
@@ -197,13 +197,13 @@ async function summarizeBatch(items:Array<{ story:Story; evidence:string; key:st
     body:JSON.stringify({
       model,
       temperature:0.15,
-      max_tokens:2500,
+      max_tokens:1400,
       thinking:{ type:"disabled" },
       response_format:{ type:"json_object" },
       messages:[
         {
           role:"system",
-          content:"你是严谨的中文早报编辑。每项材料彼此独立，绝对不得把一项的事实写进另一项。只能依据对应项的标题、已有摘要和文章正文，不得使用外部知识，不得猜测。为每条新闻写一至两段中文摘要，共80至260个汉字；第一段说明发生了什么，第二段仅在材料足够时说明背景、数据或影响。保留关键主体、数字、时间和政策名称；删除宣传性套话；英文材料必须译成自然中文。若正文抓取不足，应保守概括标题和已有摘要，并明确材料边界。严格原样返回每项key，顺序与输入一致，只输出JSON。",
+          content:"你是严谨的中文早报编辑。当前请求只有一篇长文。只能依据给定标题和文章正文，不得使用外部知识，不得猜测。写成两段较详细的中文摘要，共220至420个汉字：第一段完整交代事件、主体、时间、措施和关键数据；第二段提炼文章给出的背景、原因、影响或后续关注点。保留政策与机构的准确名称，删除宣传性套话；英文材料译成自然中文。任何结论都必须能在正文中找到依据。严格原样返回key，只输出JSON。",
         },
         {
           role:"user",
@@ -235,30 +235,12 @@ async function summarizeWithRetry(items:Array<{ story:Story; evidence:string; ke
   throw lastError;
 }
 
-function relevantSummary(title:string, summary:string) {
-  const titlePairs = bigramSet(title);
-  const parts = summary.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
-  const relevant = parts.filter((part) => {
-    const paragraphPairs = bigramSet(part);
-    let shared = 0;
-    for (const pair of titlePairs) if (paragraphPairs.has(pair)) shared += 1;
-    return shared >= 1;
-  });
-  return relevant.join("\n\n");
-}
-
-function bigramSet(value:string) {
-  const normalized = value.replace(/[\s\p{P}\p{S}]/gu, "");
-  const result = new Set<string>();
-  for (let index = 0; index < normalized.length - 1; index += 1) result.add(normalized.slice(index, index + 2));
-  return result;
-}
-
 const data = JSON.parse(await readFile(newsPath, "utf8")) as { stories:Story[]; [key:string]:unknown };
 data.stories.forEach((story) => { story.url = cleanArticleUrl(story.url); });
 await resolveOriginalUrls(data.stories);
 console.log(`正在抓取 ${data.stories.length} 篇原文…`);
 const evidence = new Map<string,string>();
+const longArticles:Story[] = [];
 const concurrency = 12;
 for (let index = 0; index < data.stories.length; index += concurrency) {
   const batch = data.stories.slice(index, index + concurrency);
@@ -266,6 +248,7 @@ for (let index = 0; index < data.stories.length; index += concurrency) {
   batch.forEach((story, offset) => {
     const body = bodies[offset] || "";
     evidence.set(story.id, body || story.summary);
+    if (body.replace(/\s+/g, "").length >= minimumLongArticleLength) longArticles.push(story);
     const summary = sourceSummary(story, body);
     if (summary !== story.summary) {
       story.summary = summary;
@@ -277,28 +260,25 @@ for (let index = 0; index < data.stories.length; index += concurrency) {
 let enriched = 0;
 let useAi = Boolean(token);
 if (!token) console.log("未提供智谱 API Key，使用原文提炼摘要。");
-for (let index = 0; useAi && index < data.stories.length; index += batchSize) {
-  const stories = data.stories.slice(index, index + batchSize);
-  const items = stories.map((story, offset) => ({ story, evidence:evidence.get(story.id) || story.summary, key:`ITEM_${String.fromCharCode(65 + offset)}` }));
+console.log(`识别出 ${longArticles.length}/${data.stories.length} 篇长文，仅长文调用智谱。`);
+for (let index = 0; useAi && index < longArticles.length; index += 1) {
+  const story = longArticles[index];
+  const items = [{ story, evidence:evidence.get(story.id) || "", key:"ARTICLE" }];
   try {
     const summaries = await summarizeWithRetry(items);
-    for (const result of summaries) {
-      const itemIndex = items.findIndex((item) => item.key === result.key);
-      if (itemIndex < 0) continue;
-      const story = stories[itemIndex];
-      const summary = story && result.summary ? relevantSummary(story.title, result.summary.trim()) : "";
-      if (story && summary && summary.length >= 35 && /[\u3400-\u9fff]/.test(summary)) {
-        story.summary = summary.slice(0, 700);
-        story.summaryMethod = "zhipu-glm-4.7-flash";
-        enriched += 1;
-      }
+    const result = summaries.find((item) => item.key === "ARTICLE");
+    const summary = result?.summary?.trim() || "";
+    if (summary.length >= 120 && /[\u3400-\u9fff]/.test(summary)) {
+      story.summary = summary.slice(0, 900);
+      story.summaryMethod = "zhipu-glm-4.7-flash";
+      enriched += 1;
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.warn(`第 ${Math.floor(index / batchSize) + 1} 批 AI 摘要失败，使用原文提炼摘要：${message}`);
+    console.warn(`第 ${index + 1} 篇长文 AI 摘要失败，使用原文提炼摘要：${message}`);
     if (/401|403/.test(message)) useAi = false;
   }
-  if (index + batchSize < data.stories.length) await new Promise((resolveDelay) => setTimeout(resolveDelay, requestIntervalMs));
+  if (index + 1 < longArticles.length) await new Promise((resolveDelay) => setTimeout(resolveDelay, requestIntervalMs));
 }
 
 data.summaryEnrichedAt = new Date().toISOString();

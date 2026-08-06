@@ -31,6 +31,9 @@ function openStory(story) {
   document.querySelector("#modal-categories").textContent = story.categories.join(" · ");
   document.querySelector("#modal-source").textContent = story.source;
   document.querySelector("#story-title").textContent = story.title;
+  document.querySelector("#summary-label").textContent = story.summaryMethod === "zhipu-glm-4.7-flash"
+    ? "智谱长文摘要"
+    : story.summaryMethod === "source-extractive" ? "原文提炼" : "新闻源摘要";
   document.querySelector("#modal-summary").textContent = story.summary;
   document.querySelector("#source-link").href = story.url;
   overlay.hidden = false;
