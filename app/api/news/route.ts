@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-type Feed = { url: string; source: string; category: string };
+type Feed = { url: string; source: string; category: string; boost?: number };
 type Story = { id:string; title:string; summary:string; context:string; category:string; source:string; url:string; publishedAt:string; score:number };
 
 const feeds: Feed[] = [
@@ -19,9 +19,17 @@ const feeds: Feed[] = [
   { url:"https://feeds.bbci.co.uk/news/world/rss.xml", source:"BBC News", category:"全球" },
   { url:"https://feeds.bbci.co.uk/news/business/rss.xml", source:"BBC News", category:"行业" },
   { url:"https://feeds.bbci.co.uk/news/technology/rss.xml", source:"BBC News", category:"科技" },
+  { url:"https://www.miit.gov.cn/api-gateway/jpaas-plugins-web-server/front/rss/getinfo?webId=8d828e408d90447786ddbe128d495e9e&columnIds=d3e2bede1bc045e2875fc7161c01db7d,028da85b0dbd4c9cb96fd5f421cd32b8,e4d6c56063fa4edca257cc2e24ad473c,161ae25e72be496f93cd1c1a79f5cc2b,ca517c97303b40cf80bd668b35f6148f", source:"工业和信息化部", category:"行业", boost:22 },
+  { url:"https://www.miit.gov.cn/api-gateway/jpaas-plugins-web-server/front/rss/getinfo?webId=8d828e408d90447786ddbe128d495e9e&columnIds=925fa8f4afd44e53818794ed96d9876e,30f92eeafcfd4685984dfb793a2c5fff", source:"工业和信息化部", category:"政界", boost:24 },
+  { url:"https://www.miit.gov.cn/api-gateway/jpaas-plugins-web-server/front/rss/getinfo?webId=8d828e408d90447786ddbe128d495e9e&columnIds=b5946cb121b84c30b9ac608467c9df4e,ebeccdcd21bc4eeb9655a8890e87c04c,4499228ad1ed4491978d3911ec38fc60,2b57d2422a8c4f949b02fd5d0a753f2f", source:"工业和信息化部", category:"行业", boost:20 },
+  { url:"https://news.google.com/rss/search?q=site%3Amost.gov.cn%20when%3A2d&hl=zh-CN&gl=CN&ceid=CN%3Azh-Hans", source:"科学技术部", category:"科技", boost:24 },
+  { url:"https://news.google.com/rss/search?q=site%3Amofcom.gov.cn%20when%3A2d&hl=zh-CN&gl=CN&ceid=CN%3Azh-Hans", source:"商务部", category:"行业", boost:24 },
+  { url:"https://www.pbs.org/newshour/feeds/rss/headlines", source:"PBS NewsHour", category:"全球" },
+  { url:"https://www.pbs.org/newshour/feeds/rss/politics", source:"PBS NewsHour", category:"政界" },
+  { url:"https://feeds.npr.org/1001/rss.xml", source:"NPR", category:"全球" },
 ];
 
-const noise = /明星|演员|歌手|网红|恋情|绯闻|综艺|票房|红毯|娱乐|八卦|婚礼|离婚|球赛|足球|篮球|彩票|时尚|美妆|celebrity|entertainment|movie|fashion|football|basketball/i;
+const noise = /明星|演员|歌手|网红|恋情|绯闻|综艺|票房|红毯|娱乐|八卦|婚礼|离婚|球赛|足球|篮球|彩票|时尚|美妆|企业名称.*所属地区|备案状态|celebrity|entertainment|movie|fashion|football|basketball/i;
 const high = /中央|国务院|政策|改革|经济|金融|利率|贸易|关税|外交|冲突|战争|能源|芯片|人工智能|气候|监管|选举|就业|GDP|inflation|election|government|policy|economy|trade|tariff|war|energy|chip|artificial intelligence|climate/i;
 const tech = /科技|技术|人工智能|芯片|半导体|算力|航天|科研|science|technology|AI\b|chip|semiconductor|space/i;
 const knowledge = /研究|报告|发现|教育|健康|科学|考古|research|study|science|education|health/i;
@@ -52,14 +60,14 @@ function contextFor(category:string) {
 }
 function parseFeed(xml:string, feed:Feed):Story[] {
   return (xml.match(/<item[\s\S]*?<\/item>/gi) || []).map((item, index) => {
-    const title = field(item,"title");
+    const title = field(item,"title").replace(/\s+-\s+(?:mofcom\.gov\.cn|most\.gov\.cn|商务部)(?:\s+-\s+商务部)?\s*$/i, "");
     const raw = field(item,"description") || field(item,"content:encoded");
     const summary = raw.length > 260 ? `${raw.slice(0,257)}…` : raw;
     const url = field(item,"link") || field(item,"guid");
     const publishedAt = field(item,"pubDate") || new Date().toISOString();
     const category = classify(title, summary, feed.category);
     const age = Math.max(0, (Date.now() - new Date(publishedAt).getTime()) / 36e5);
-    const score = Math.round(60 + (high.test(`${title} ${summary}`) ? 28 : 0) + Math.max(0, 18 - age / 2) - index * .7);
+    const score = Math.round(60 + (feed.boost || 0) + (high.test(`${title} ${summary}`) ? 28 : 0) + Math.max(0, 18 - age / 2) - index * .7);
     return { id:`${feed.source}-${index}-${title.slice(0,18)}`, title, summary:summary || "原始新闻源未提供摘要，请点击查看完整报道。", context:contextFor(category), category, source:feed.source, url, publishedAt, score };
   }).filter((story) => story.title && story.url && !noise.test(`${story.title} ${story.summary}`));
 }
@@ -137,7 +145,10 @@ export async function GET() {
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
   const target = dayKey(yesterday);
-  const fromYesterday = unique.filter((story) => dayKey(new Date(story.publishedAt)) === target);
+  const fromYesterday = unique.filter((story) => {
+    const published = new Date(story.publishedAt);
+    return !Number.isNaN(published.getTime()) && dayKey(published) === target;
+  });
   const pool = fromYesterday.length >= 6 ? fromYesterday : unique;
   const stories = diversify(await translateStories(pool));
   return NextResponse.json({ stories, editionDate:target, updatedAt:new Date().toISOString(), sources:[...new Set(stories.map((story) => story.source))], methodology:"公开RSS聚合、跨媒体轮排、娱乐降噪、昨日筛选与公共影响评分；不限制单一来源或总条数" }, { headers:{ "Cache-Control":"public, max-age=300, s-maxage=600" } });
