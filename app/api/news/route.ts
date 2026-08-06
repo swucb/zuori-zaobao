@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-type Feed = { url: string; source: string; category: string; boost?: number };
+type Feed = { url: string; source: string; category: string; boost?: number; policyOnly?: boolean; centralOnly?: boolean };
 type Story = { id:string; title:string; summary:string; context:string; category:string; source:string; url:string; publishedAt:string; score:number };
 
 const feeds: Feed[] = [
@@ -27,19 +27,24 @@ const feeds: Feed[] = [
   { url:"https://www.pbs.org/newshour/feeds/rss/headlines", source:"PBS NewsHour", category:"全球" },
   { url:"https://www.pbs.org/newshour/feeds/rss/politics", source:"PBS NewsHour", category:"全球" },
   { url:"https://feeds.npr.org/1001/rss.xml", source:"NPR", category:"全球" },
+  { url:"http://www.xinhuanet.com/politics/news_politics.xml", source:"新华网", category:"政策", boost:25, policyOnly:true },
+  { url:"https://news.google.com/rss/search?q=site%3Agov.cn%20when%3A2d%20(%E6%94%BF%E7%AD%96%20OR%20%E4%BB%BB%E5%85%8D%20OR%20%E5%9B%BD%E5%8A%A1%E9%99%A2)&hl=zh-CN&gl=CN&ceid=CN%3Azh-Hans", source:"中国政府网", category:"政策", boost:28, policyOnly:true, centralOnly:true },
+  { url:"https://news.google.com/rss/search?q=site%3Anews.cn%2Fpolitics%20when%3A2d&hl=zh-CN&gl=CN&ceid=CN%3Azh-Hans", source:"新华时政", category:"政策", boost:25, policyOnly:true },
+  { url:"https://news.google.com/rss/search?q=site%3Apeople.com.cn%20when%3A2d%20(%E6%97%B6%E6%94%BF%20OR%20%E4%BA%BA%E4%BA%8B)&hl=zh-CN&gl=CN&ceid=CN%3Azh-Hans", source:"人民网", category:"政策", boost:24, policyOnly:true },
 ];
 
-const noise = /明星|演员|歌手|网红|恋情|绯闻|综艺|票房|红毯|娱乐|八卦|婚礼|离婚|球赛|足球|篮球|彩票|时尚|美妆|企业名称.*所属地区|备案状态|celebrity|entertainment|movie|fashion|football|basketball/i;
+const noise = /明星|演员|歌手|网红|恋情|绯闻|综艺|票房|红毯|娱乐|八卦|婚礼|离婚|球赛|足球|篮球|彩票|时尚|美妆|企业名称.*所属地区|备案状态|政府采购|采购电子交易|招标|投标|项目申报|国务院要闻|国务院信息|地点：|celebrity|entertainment|movie|fashion|football|basketball/i;
 const high = /中央|国务院|政策|改革|经济|金融|利率|贸易|关税|外交|冲突|战争|能源|芯片|人工智能|气候|监管|选举|就业|GDP|inflation|election|government|policy|economy|trade|tariff|war|energy|chip|artificial intelligence|climate/i;
 const tech = /科技|技术|人工智能|芯片|半导体|算力|航天|科研|science|technology|AI\b|chip|semiconductor|space/i;
 const china = /中国|中方|我国|国内|北京|中美|国务院|党中央|工信部|科技部|商务部|人民币|A股|China|Chinese|Beijing|Xi Jinping/i;
 const unitedStates = /美国|美方|美联储|白宫|华盛顿|国会|特朗普|拜登|美元|美股|United States|U\.S\.|American|White House|Federal Reserve|Congress|Trump|Biden/i;
-const policy = /任免|人事|干部|党委|政治局|国务院|中央|两会|政府|政策|改革|部长|主席|书记|局长|官员|获刑|落马|审查|法律|法案|条例|规定|外交|govern|policy|minister|official|politburo|law|regulation|diploma/i;
+const policy = /任免|人事|干部|党委|政治局|国务院|中央|两会|政府|政策|改革|部长|主席|书记|局长|官员|获刑|落马|审查|法律|法案|条例|规定|外交|会议|部署|召开|强调|会见|主持|出席|印发|讲话|考察|决定|govern|policy|minister|official|politburo|meeting|law|regulation|diploma/i;
+const centralPolicy = /中共中央|党中央|中央政治局|国务院|习近平|李强|全国人大|全国政协|国家主席|国家工作人员|任免|外交部|中央纪委|中央组织部|最高人民法院|最高人民检察院/;
 const industry = /经济|企业|产业|制造|工业|投资|消费|出口|进口|贸易|金融|银行|证券|房地产|就业|市场|供应链|产量|销量|economic|economy|business|industry|manufactur|investment|consumer|export|import|trade|financial|bank|market|supply chain/i;
 const systemWide = /全球|世界|国际|联合国|多边|世贸|贸易体系|供应链|金融市场|能源市场|气候变化|G20|APEC|WTO|IMF|global|world|international|United Nations|multilateral|supply chain|financial markets|climate/i;
-const otherCountry = /英国|法国|德国|俄罗斯|乌克兰|伊朗|以色列|日本|韩国|印度|巴西|墨西哥|加拿大|澳大利亚|意大利|西班牙|土耳其|叙利亚|黎巴嫩|卡塔尔|沙特|朝鲜|越南|菲律宾|泰国|马来西亚|新加坡|霍尔木兹|加沙|Indonesia|Britain|UK\b|France|Germany|Russia|Ukraine|Iran|Israel|Japan|Korea|India|Brazil|Mexico|Canada|Australia|Italy|Spain|Turkey|Syria|Lebanon|Qatar|Saudi|Vietnam|Philippines|Thailand|Malaysia|Singapore|Hormuz|Gaza/i;
+const otherCountry = /英国|法国|德国|俄罗斯|俄总统|普京|乌克兰|伊朗|以色列|日本|韩国|印度|巴西|墨西哥|加拿大|澳大利亚|意大利|西班牙|土耳其|叙利亚|黎巴嫩|卡塔尔|沙特|朝鲜|越南|菲律宾|泰国|马来西亚|新加坡|霍尔木兹|加沙|Indonesia|Britain|UK\b|France|Germany|Russia|Ukraine|Iran|Israel|Japan|Korea|India|Brazil|Mexico|Canada|Australia|Italy|Spain|Turkey|Syria|Lebanon|Qatar|Saudi|Vietnam|Philippines|Thailand|Malaysia|Singapore|Hormuz|Gaza/i;
 const chineseOfficial = /工业和信息化部|科学技术部|商务部/;
-const domesticPolicySource = /^(中国新闻网|China Daily|CGTN|工业和信息化部|科学技术部|商务部)$/;
+const domesticPolicySource = /^(中国新闻网|China Daily|CGTN|工业和信息化部|科学技术部|商务部|新华网|中国政府网|新华时政|人民网)$/;
 
 function decode(value:string) {
   return value.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,"$1").replace(/<[^>]+>/g," ")
@@ -60,8 +65,9 @@ function classify(title:string, summary:string, feed:Feed) {
 function inChinaUSScope(story:Story) {
   const text = `${story.title} ${story.summary}`;
   const chinaUS = china.test(text) || unitedStates.test(text) || chineseOfficial.test(story.source);
+  const domesticPolicyStory = story.category === "政策" && domesticPolicySource.test(story.source);
   if (otherCountry.test(story.title) && !china.test(story.title)) return false;
-  return chinaUS || systemWide.test(text);
+  return chinaUS || domesticPolicyStory || systemWide.test(text);
 }
 function contextFor(category:string) {
   const map:Record<string,string> = {
@@ -74,7 +80,7 @@ function contextFor(category:string) {
 }
 function parseFeed(xml:string, feed:Feed):Story[] {
   return (xml.match(/<item[\s\S]*?<\/item>/gi) || []).map((item, index) => {
-    const title = field(item,"title").replace(/\s+-\s+(?:mofcom\.gov\.cn|most\.gov\.cn|商务部)(?:\s+-\s+商务部)?\s*$/i, "");
+    const title = field(item,"title").replace(/\s+-\s+(?:mofcom\.gov\.cn|most\.gov\.cn|gov\.cn|news\.cn|people\.com\.cn|商务部|新华网|人民网)(?:\s+-\s+(?:商务部|新华网|人民网))?\s*$/i, "");
     const raw = field(item,"description") || field(item,"content:encoded");
     const summary = raw.length > 260 ? `${raw.slice(0,257)}…` : raw;
     const url = field(item,"link") || field(item,"guid");
@@ -83,7 +89,7 @@ function parseFeed(xml:string, feed:Feed):Story[] {
     const age = Math.max(0, (Date.now() - new Date(publishedAt).getTime()) / 36e5);
     const score = Math.round(60 + (feed.boost || 0) + (high.test(`${title} ${summary}`) ? 28 : 0) + Math.max(0, 18 - age / 2) - index * .7);
     return { id:`${feed.source}-${index}-${title.slice(0,18)}`, title, summary:summary || "原始新闻源未提供摘要，请点击查看完整报道。", context:contextFor(category), category, source:feed.source, url, publishedAt, score };
-  }).filter((story) => story.title && story.url && !noise.test(`${story.title} ${story.summary}`) && inChinaUSScope(story));
+  }).filter((story) => story.title && story.url && (!feed.policyOnly || story.category === "政策") && (!feed.centralOnly || centralPolicy.test(story.title)) && !noise.test(`${story.title} ${story.summary}`) && inChinaUSScope(story));
 }
 
 function needsTranslation(story:Story) {
