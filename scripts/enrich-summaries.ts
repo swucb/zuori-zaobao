@@ -19,8 +19,8 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const newsPath = resolve(root, "public-site/news.json");
 const token = process.env.ZHIPU_API_KEY || "";
 const model = process.env.SUMMARY_MODEL || "glm-4.7-flash";
-const batchSize = 6;
-const requestIntervalMs = 4300;
+const batchSize = 1;
+const requestIntervalMs = 900;
 
 function cleanArticleUrl(value:string) {
   try {
@@ -209,6 +209,26 @@ async function summarizeBatch(items:Array<{ story:Story; evidence:string; key:st
   return parsed.summaries || [];
 }
 
+function relevantSummary(title:string, summary:string) {
+  const titlePairs = bigramSet(title);
+  const parts = summary.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
+  const relevant = parts.filter((part, index) => {
+    if (index === 0) return true;
+    const paragraphPairs = bigramSet(part);
+    let shared = 0;
+    for (const pair of titlePairs) if (paragraphPairs.has(pair)) shared += 1;
+    return shared >= 1;
+  });
+  return relevant.join("\n\n");
+}
+
+function bigramSet(value:string) {
+  const normalized = value.replace(/[\s\p{P}\p{S}]/gu, "");
+  const result = new Set<string>();
+  for (let index = 0; index < normalized.length - 1; index += 1) result.add(normalized.slice(index, index + 2));
+  return result;
+}
+
 const data = JSON.parse(await readFile(newsPath, "utf8")) as { stories:Story[]; [key:string]:unknown };
 data.stories.forEach((story) => { story.url = cleanArticleUrl(story.url); });
 await resolveOriginalUrls(data.stories);
@@ -239,8 +259,8 @@ for (let index = 0; useAi && index < data.stories.length; index += batchSize) {
     const summaries = await summarizeBatch(items);
     for (const result of summaries) {
       const story = data.stories[Number(result.key)];
-      const summary = result.summary?.trim();
-      if (story && summary && summary.length >= 60 && /[\u3400-\u9fff]/.test(summary)) {
+      const summary = story && result.summary ? relevantSummary(story.title, result.summary.trim()) : "";
+      if (story && summary && summary.length >= 35 && /[\u3400-\u9fff]/.test(summary)) {
         story.summary = summary.slice(0, 700);
         story.summaryMethod = "zhipu-glm-4.7-flash";
         enriched += 1;

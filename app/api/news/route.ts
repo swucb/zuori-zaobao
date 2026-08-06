@@ -170,6 +170,62 @@ function diversify(stories:Story[]) {
   return picked;
 }
 
+function normalizedHeadline(value:string) {
+  return value.toLowerCase()
+    .replace(/(?:最新|独家|快讯|视频|图解|组图|评论|观察|记者手记|权威发布)/g, "")
+    .replace(/[\s\p{P}\p{S}]/gu, "");
+}
+
+function bigrams(value:string) {
+  const normalized = normalizedHeadline(value);
+  const result = new Set<string>();
+  for (let index = 0; index < normalized.length - 1; index += 1) result.add(normalized.slice(index, index + 2));
+  return result;
+}
+
+function similarity(left:string, right:string) {
+  const a = bigrams(left);
+  const b = bigrams(right);
+  if (!a.size || !b.size) return 0;
+  let shared = 0;
+  for (const token of a) if (b.has(token)) shared += 1;
+  return shared / Math.min(a.size, b.size);
+}
+
+function canonicalStoryUrl(value:string) {
+  try {
+    const url = new URL(value);
+    url.hash = "";
+    for (const key of [...url.searchParams.keys()]) if (/^(utm_|oc$|gclid$|fbclid$)/i.test(key)) url.searchParams.delete(key);
+    return `${url.hostname}${url.pathname}${url.search}`.replace(/\/$/, "");
+  } catch {
+    return value;
+  }
+}
+
+function sameEvent(left:Story, right:Story) {
+  if (canonicalStoryUrl(left.url) === canonicalStoryUrl(right.url)) return true;
+  const a = normalizedHeadline(left.title);
+  const b = normalizedHeadline(right.title);
+  if (Math.min(a.length, b.length) >= 10 && (a.includes(b) || b.includes(a))) return true;
+  const titleSimilarity = similarity(left.title, right.title);
+  const sharedNumbers = [...new Set(left.title.match(/\d+(?:\.\d+)?/g) || [])].some((number) => right.title.includes(number));
+  return titleSimilarity >= 0.72 || (titleSimilarity >= 0.58 && sharedNumbers);
+}
+
+function deduplicateEvents(stories:Story[]) {
+  const kept:Story[] = [];
+  for (const story of [...stories].sort((a, b) => b.score - a.score)) {
+    const duplicate = kept.find((candidate) => sameEvent(story, candidate));
+    if (!duplicate) {
+      kept.push(story);
+      continue;
+    }
+    duplicate.categories = [...new Set([...duplicate.categories, ...story.categories])];
+  }
+  return kept;
+}
+
 export async function GET() {
   const responses = await Promise.allSettled(feeds.map(async (feed) => {
     const response = await fetch(feed.url, { signal:AbortSignal.timeout(8000), headers:{ "User-Agent":"YesterdayBrief/1.0" }, cf:{ cacheTtl:900 } } as RequestInit & { cf:{cacheTtl:number} });
@@ -211,7 +267,8 @@ export async function GET() {
     return selected;
   });
   const translated = await translateStories(pool.filter((story, index, items) => items.findIndex((candidate) => candidate.id === story.id) === index));
-  const stories = categoryOrder.flatMap((category) => diversify(translated.filter((story) => story.category === category)));
+  const deduplicated = deduplicateEvents(translated);
+  const stories = categoryOrder.flatMap((category) => diversify(deduplicated.filter((story) => story.category === category)));
   const counts = Object.fromEntries(categoryOrder.map((category) => [category, stories.filter((story) => story.categories.includes(category)).length]));
   return NextResponse.json({ stories, counts, editionDate:target, updatedAt:new Date().toISOString(), sources:[...new Set(stories.map((story) => story.source))], methodology:"每栏以昨日新闻为主；数量不足时分别补充最近三天内容，避免某一栏因单日源波动而为空" }, { headers:{ "Cache-Control":"public, max-age=300, s-maxage=3600, stale-while-revalidate=300" } });
 }
