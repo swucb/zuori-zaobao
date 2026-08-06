@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="description" content="每日汇总昨日重要政治、行业、科技与全球资讯，过滤娱乐花边。" />
+    <title>昨日早报｜真正重要的事</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main>
+      <header class="topbar">
+        <a class="brand" href="#top" aria-label="昨日早报首页">昨日<span>早报</span></a>
+        <div class="status"><i></i> 每日 07:30 更新</div>
+      </header>
+
+      <section class="intro" id="top">
+        <p class="eyebrow" id="edition-label">THE MORNING BRIEF</p>
+        <h1>昨天，<br />真正重要的事。</h1>
+        <p class="dek">替你读完公开新闻源。先看中国政治，再看中国行业与科技，最后掌握中美及全球大势。</p>
+        <div class="meta-row">
+          <span id="story-count">正在整理今日早报…</span>
+          <span id="reading-time"></span>
+        </div>
+      </section>
+
+      <nav class="filters" aria-label="新闻分类">
+        <button class="active" data-filter="全部">全部</button>
+        <button data-filter="政治">政治</button>
+        <button data-filter="行业">行业</button>
+        <button data-filter="科技">科技</button>
+        <button data-filter="全球">全球</button>
+      </nav>
+
+      <section class="feed" id="feed" aria-live="polite">
+        <div class="empty">正在整理今日早报…</div>
+      </section>
+
+      <footer>
+        <div class="footer-mark">昨日报</div>
+        <p>公开来源 · 智能去重 · 重要性排序</p>
+        <p class="fineprint">摘要仅用于信息速览，事实与完整语境请以原报道为准。</p>
+      </footer>
+    </main>
+
+    <div class="overlay" id="overlay" hidden>
+      <section class="sheet" role="dialog" aria-modal="true" aria-labelledby="story-title">
+        <button class="close" id="close" aria-label="关闭">×</button>
+        <div class="sheet-top"><span id="modal-categories"></span><span id="modal-source"></span></div>
+        <h2 id="story-title"></h2>
+        <div class="summary-label">早报摘要</div>
+        <p id="modal-summary"></p>
+        <a class="source-link" id="source-link" target="_blank" rel="noreferrer">查看原报道 ↗</a>
+      </section>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse } from "next/server.js";
 
 type Feed = { url: string; source: string; category: string; boost?: number; policyOnly?: boolean; centralOnly?: boolean; trustedAggregate?: boolean };
 type Story = { id:string; title:string; summary:string; context:string; category:string; categories:string[]; source:string; url:string; publishedAt:string; score:number };
