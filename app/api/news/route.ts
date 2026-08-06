@@ -64,7 +64,7 @@ function parseFeed(xml:string, feed:Feed):Story[] {
   }).filter((story) => story.title && story.url && !noise.test(`${story.title} ${story.summary}`));
 }
 
-function diversify(stories:Story[], limit:number) {
+function diversify(stories:Story[]) {
   const groups = new Map<string, Story[]>();
   for (const story of stories.sort((a,b) => b.score - a.score)) {
     const group = groups.get(story.source) || [];
@@ -73,12 +73,11 @@ function diversify(stories:Story[], limit:number) {
   }
   const sourceOrder = [...groups.keys()].sort((a,b) => (groups.get(b)?.[0].score || 0) - (groups.get(a)?.[0].score || 0));
   const picked:Story[] = [];
-  const maxPerSource = 4;
-  for (let round = 0; round < maxPerSource && picked.length < limit; round++) {
+  const longestSource = Math.max(0, ...[...groups.values()].map((group) => group.length));
+  for (let round = 0; round < longestSource; round++) {
     for (const source of sourceOrder) {
       const story = groups.get(source)?.[round];
       if (story) picked.push(story);
-      if (picked.length === limit) break;
     }
   }
   return picked;
@@ -103,6 +102,6 @@ export async function GET() {
   const target = dayKey(yesterday);
   const fromYesterday = unique.filter((story) => dayKey(new Date(story.publishedAt)) === target);
   const pool = fromYesterday.length >= 6 ? fromYesterday : unique;
-  const stories = diversify(pool, 18);
-  return NextResponse.json({ stories, editionDate:target, updatedAt:new Date().toISOString(), sources:[...new Set(stories.map((story) => story.source))], methodology:"公开RSS聚合、跨媒体去重、单一来源限额、娱乐降噪、昨日筛选与公共影响评分" }, { headers:{ "Cache-Control":"public, max-age=300, s-maxage=600" } });
+  const stories = diversify(pool);
+  return NextResponse.json({ stories, editionDate:target, updatedAt:new Date().toISOString(), sources:[...new Set(stories.map((story) => story.source))], methodology:"公开RSS聚合、跨媒体轮排、娱乐降噪、昨日筛选与公共影响评分；不限制单一来源或总条数" }, { headers:{ "Cache-Control":"public, max-age=300, s-maxage=600" } });
 }
