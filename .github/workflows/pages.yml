@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  models: read
   pages: write
   id-token: write
 
@@ -32,6 +33,12 @@ jobs:
         run: npm ci
       - name: 生成当日新闻快照
         run: node --experimental-strip-types scripts/generate-news.ts
+      - name: 阅读原文并生成中文摘要
+        continue-on-error: true
+        env:
+          GH_MODELS_TOKEN: ${{ github.token }}
+          SUMMARY_MODEL: openai/gpt-4.1-mini
+        run: node --experimental-strip-types scripts/enrich-summaries.ts
       - name: 配置 GitHub Pages
         uses: actions/configure-pages@v5
       - name: 上传静态站点
