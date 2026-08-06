@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const { GoogleDecoder } = require("google-news-url-decoder") as { GoogleDecoder:new () => { decodeBatch:(urls:string[]) => Promise<Array<{status:boolean;decoded_url?:string}>> } };
+const { GoogleDecoder } = require("google-news-url-decoder") as { GoogleDecoder:new () => { decode:(url:string) => Promise<{status:boolean;decoded_url?:string}> } };
 
 type Story = {
   id:string;
@@ -37,19 +37,30 @@ function cleanArticleUrl(value:string) {
 async function resolveOriginalUrls(stories:Story[]) {
   const wrapped = stories.filter((story) => /(^|\.)news\.google\.com$/i.test(new URL(story.url).hostname));
   if (!wrapped.length) return;
-  try {
-    const results = await Promise.race([
-      new GoogleDecoder().decodeBatch(wrapped.map((story) => story.url)),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("解析超过60秒")), 60_000)),
-    ]);
-    results.forEach((result, index) => {
+  const decoder = new GoogleDecoder();
+  const concurrency = 4;
+  let resolved = 0;
+  for (let index = 0; index < wrapped.length; index += concurrency) {
+    const group = wrapped.slice(index, index + concurrency);
+    const results = await Promise.all(group.map(async (story) => {
+      try {
+        return await Promise.race([
+          decoder.decode(story.url),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error("解析超时")), 18_000)),
+        ]);
+      } catch {
+        return { status:false };
+      }
+    }));
+    results.forEach((result, offset) => {
       const decoded = result.status && result.decoded_url ? cleanArticleUrl(result.decoded_url) : "";
-      if (decoded && !decoded.includes("news.google.com/")) wrapped[index].url = decoded;
+      if (decoded && !decoded.includes("news.google.com/")) {
+        group[offset].url = decoded;
+        resolved += 1;
+      }
     });
-    console.log(`已还原 ${wrapped.filter((story) => !story.url.includes("news.google.com/")).length}/${wrapped.length} 条媒体原始链接。`);
-  } catch (error) {
-    console.warn(`原始链接还原失败，暂时保留中转链接：${error instanceof Error ? error.message : error}`);
   }
+  console.log(`已逐条还原 ${resolved}/${wrapped.length} 条媒体原始链接。`);
 }
 
 function splitSentences(value:string) {
