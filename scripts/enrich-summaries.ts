@@ -215,7 +215,7 @@ data.stories.forEach((story) => { story.url = cleanArticleUrl(story.url); });
 await resolveOriginalUrls(data.stories);
 console.log(`正在抓取 ${data.stories.length} 篇原文…`);
 const evidence = new Map<string,string>();
-const concurrency = 3;
+const concurrency = 12;
 for (let index = 0; index < data.stories.length; index += concurrency) {
   const batch = data.stories.slice(index, index + concurrency);
   const bodies = await Promise.all(batch.map(fetchArticle));
