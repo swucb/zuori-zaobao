@@ -86,6 +86,35 @@ function extractArticleText(html:string) {
   return paragraphs.join("\n").slice(0, 2400);
 }
 
+function extractReaderText(markdown:string) {
+  const content = markdown.includes("Markdown Content:") ? markdown.split("Markdown Content:").slice(1).join("Markdown Content:") : markdown;
+  return content
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/[>*_`|]/g, " ")
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter((line) => line.length >= 18)
+    .filter((line) => !/^(Title:|URL Source:|Published Time:|Play Video|Image \d|Video \d|责任编辑|策划：|监制：|统筹：|记者：)/i.test(line))
+    .join("\n")
+    .slice(0, 5000);
+}
+
+async function fetchViaReader(url:string) {
+  try {
+    const readerUrl = `https://r.jina.ai/http://${url.replace(/^https?:\/\//, "")}`;
+    const response = await fetch(readerUrl, {
+      signal:AbortSignal.timeout(25000),
+      headers:{ Accept:"text/plain", "User-Agent":"ZuoriZaobao/1.0" },
+    });
+    if (!response.ok) return "";
+    return extractReaderText(await response.text());
+  } catch {
+    return "";
+  }
+}
+
 async function fetchArticle(story:Story) {
   try {
     const response = await fetch(story.url, {
@@ -94,11 +123,14 @@ async function fetchArticle(story:Story) {
       headers:{ "User-Agent":"Mozilla/5.0 (compatible; ZuoriZaobao/1.0; +https://swucb.github.io/zuori-zaobao/)" },
     });
     const type = response.headers.get("content-type") || "";
-    if (!response.ok || !type.includes("text/html")) return "";
-    return extractArticleText(await response.text());
+    if (response.ok && type.includes("text/html")) {
+      const direct = extractArticleText(await response.text());
+      if (direct.length >= 100) return direct;
+    }
   } catch {
-    return "";
+    // Continue with the public reader fallback below.
   }
+  return fetchViaReader(story.url);
 }
 
 async function summarizeBatch(items:Array<{ story:Story; evidence:string; key:string }>) {
@@ -147,7 +179,7 @@ async function summarizeBatch(items:Array<{ story:Story; evidence:string; key:st
 const data = JSON.parse(await readFile(newsPath, "utf8")) as { stories:Story[]; [key:string]:unknown };
 console.log(`正在抓取 ${data.stories.length} 篇原文…`);
 const evidence = new Map<string,string>();
-const concurrency = 12;
+const concurrency = 3;
 for (let index = 0; index < data.stories.length; index += concurrency) {
   const batch = data.stories.slice(index, index + concurrency);
   const bodies = await Promise.all(batch.map(fetchArticle));
