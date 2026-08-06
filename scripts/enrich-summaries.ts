@@ -163,8 +163,9 @@ for (let index = 0; index < data.stories.length; index += concurrency) {
 }
 
 let enriched = 0;
+let useAi = Boolean(token);
 if (!token) console.log("未提供 GitHub Models 令牌，使用原文提炼摘要。");
-for (let index = 0; token && index < data.stories.length; index += batchSize) {
+for (let index = 0; useAi && index < data.stories.length; index += batchSize) {
   const stories = data.stories.slice(index, index + batchSize);
   const items = stories.map((story, offset) => ({ story, evidence:evidence.get(story.id) || story.summary, key:String(index + offset) }));
   try {
@@ -179,7 +180,9 @@ for (let index = 0; token && index < data.stories.length; index += batchSize) {
       }
     }
   } catch (error) {
-    console.warn(`第 ${Math.floor(index / batchSize) + 1} 批 AI 摘要失败，使用原文提炼摘要：${error instanceof Error ? error.message : error}`);
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`第 ${Math.floor(index / batchSize) + 1} 批 AI 摘要失败，使用原文提炼摘要：${message}`);
+    if (/retirement|unavailable|401|403|410/.test(message)) useAi = false;
   }
   if (index + batchSize < data.stories.length) await new Promise((resolveDelay) => setTimeout(resolveDelay, requestIntervalMs));
 }
