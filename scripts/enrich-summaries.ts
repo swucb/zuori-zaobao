@@ -235,6 +235,56 @@ async function summarizeWithRetry(items:Array<{ story:Story; evidence:string; ke
   throw lastError;
 }
 
+async function rankStoriesWithAi(stories:Story[]) {
+  const candidates = stories.map((story, index) => ({
+    key:`R_${String(index).padStart(3, "0")}`,
+    title:story.title,
+    source:story.source,
+    categories:story.categories,
+    summary:story.summary.slice(0, 180),
+  }));
+  const response = await fetch("https://open.bigmodel.cn/api/paas/v4/chat/completions", {
+    method:"POST",
+    signal:AbortSignal.timeout(45000),
+    headers:{ Authorization:`Bearer ${token}`, "Content-Type":"application/json" },
+    body:JSON.stringify({
+      model,
+      temperature:0.1,
+      max_tokens:3200,
+      thinking:{ type:"disabled" },
+      response_format:{ type:"json_object" },
+      messages:[
+        {
+          role:"system",
+          content:"你是中文决策早报的总编辑。按用户实际决策价值给每条候选新闻打0到100分。最高优先：国内外行业重大动态，中方与美方的政策、外交、经贸、科技和安全动态，中央及重要部委政策，国内重要官员任免、调查与职务变化，重大宏观经济和产业链事件。中等优先：影响中国或美国的全球系统性事件。降低优先级：一般文物、考古、民族工作、党建理论、学习宣传、地方仪式活动、常规名单公示和行政许可；除非其本身具有全国性重大政策影响。只根据材料判断，不因措辞宏大而高分。必须原样返回每个key，只输出JSON。",
+        },
+        {
+          role:"user",
+          content:`返回 {"rankings":[{"key":"原key","importance":0到100的整数}]}，不得遗漏。候选如下：\n${JSON.stringify(candidates)}`,
+        },
+      ],
+    }),
+  });
+  if (!response.ok) throw new Error(`智谱排序 ${response.status}: ${(await response.text()).slice(0, 180)}`);
+  const payload = await response.json() as { choices?:Array<{ message?:{ content?:string } }> };
+  const content = payload.choices?.[0]?.message?.content?.trim() || "";
+  const parsed = JSON.parse(content.replace(/^```json\s*|\s*```$/g, "")) as { rankings?:Array<{key:string;importance:number}> };
+  const scores = new Map((parsed.rankings || []).map((item) => [item.key, Math.max(0, Math.min(100, Math.round(Number(item.importance))))]));
+  if (scores.size < Math.ceil(stories.length * .6)) throw new Error(`智谱排序仅返回 ${scores.size}/${stories.length} 条`);
+  stories.forEach((story, index) => {
+    const aiScore = scores.get(`R_${String(index).padStart(3, "0")}`);
+    const ruleScore = Math.max(0, Math.min(100, Number(story.score || 0) / 1.25));
+    if (aiScore !== undefined && Number.isFinite(aiScore)) {
+      story.aiImportanceScore = aiScore;
+      story.score = Math.round(aiScore * .85 + ruleScore * .15);
+    } else {
+      story.score = Math.round(ruleScore);
+    }
+  });
+  stories.sort((left, right) => Number(right.score || 0) - Number(left.score || 0));
+  return scores.size;
+}
+
 const data = JSON.parse(await readFile(newsPath, "utf8")) as { stories:Story[]; [key:string]:unknown };
 data.stories.forEach((story) => { story.url = cleanArticleUrl(story.url); });
 await resolveOriginalUrls(data.stories);
@@ -261,6 +311,18 @@ let enriched = 0;
 let useAi = Boolean(token);
 if (!token) console.log("未提供智谱 API Key，使用原文提炼摘要。");
 console.log(`识别出 ${longArticles.length}/${data.stories.length} 篇长文，仅长文调用智谱。`);
+if (useAi) {
+  try {
+    const ranked = await rankStoriesWithAi(data.stories);
+    data.importanceRankingMethod = "zhipu-glm-4.7-flash-with-editorial-rules";
+    data.importanceRankedCount = ranked;
+    console.log(`智谱已按用户关注方向评估 ${ranked}/${data.stories.length} 条新闻的重要性。`);
+  } catch (error) {
+    console.warn(`智谱重要性排序失败，保留规则排序：${error instanceof Error ? error.message : String(error)}`);
+    data.stories.sort((left, right) => Number(right.score || 0) - Number(left.score || 0));
+  }
+}
+if (useAi && longArticles.length) await new Promise((resolveDelay) => setTimeout(resolveDelay, requestIntervalMs));
 for (let index = 0; useAi && index < longArticles.length; index += 1) {
   const story = longArticles[index];
   const items = [{ story, evidence:evidence.get(story.id) || "", key:"ARTICLE" }];

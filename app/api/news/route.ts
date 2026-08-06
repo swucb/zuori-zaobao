@@ -47,6 +47,8 @@ const otherCountry = /英国|法国|德国|俄罗斯|俄总统|普京|乌克兰|
 const chineseOfficial = /工业和信息化部|科学技术部|商务部/;
 const domesticPolicySource = /^(中国新闻网|China Daily|CGTN|工业和信息化部|科学技术部|商务部|新华网|中国政府网|新华时政|人民网)$/;
 const trustedNewsSource = /新华社|新华网|人民网|央视|中国新闻网|中国日报|China Daily|CGTN|财新|第一财经|经济日报|证券时报|上海证券报|中国证券报|21世纪经济报道|每日经济新闻|澎湃|界面新闻|财联社|科技日报|工人日报|光明日报|环球时报|路透|彭博/i;
+const preferredTopic = /中央|国务院|外交部|商务部|工信部|工业和信息化部|科技部|国家发展改革委|财政部|人民银行|央行|金融监管|证监会|海关总署|市场监管总局|任免|任命|免去|辞职|落马|审查调查|获刑|中方|美国|美方|中美|白宫|美联储|国会|关税|制裁|反制|产业|制造|贸易|金融|能源|芯片|人工智能|供应链|企业|市场/i;
+const lowerPriorityTopic = /文物|考古|博物馆|非遗|民族团结|民族工作|党建思想|党的建设|党史|理论品格|初心使命|精神根基|学习贯彻|宣讲活动|人民情怀|世界情怀|大国气派|地方政协|项目库企业名单|行政许可决定书|公开招聘.*(?:入围|考察|名单)/i;
 
 function decode(value:string) {
   return value.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,"$1")
@@ -109,7 +111,9 @@ function parseFeed(xml:string, feed:Feed):Story[] {
     const categories = classify(title, summary, feed);
     const category = categories[0] || "全球";
     const age = publishedAt ? Math.max(0, (Date.now() - new Date(publishedAt).getTime()) / 36e5) : Number.POSITIVE_INFINITY;
-    const score = Math.round(60 + (feed.boost || 0) + (high.test(`${title} ${summary}`) ? 28 : 0) + Math.max(0, 18 - age / 2) - index * .7);
+    const text = `${title} ${summary}`;
+    const preferenceAdjustment = (preferredTopic.test(text) ? 22 : 0) - (lowerPriorityTopic.test(text) ? 42 : 0);
+    const score = Math.round(60 + (feed.boost || 0) + (high.test(text) ? 28 : 0) + preferenceAdjustment + Math.max(0, 18 - age / 2) - index * .7);
     return { id:`${feed.source}-${index}-${title.slice(0,18)}`, title, summary:summary || "", context:contextFor(category), category, categories, source:itemSource, url, publishedAt, score };
   }).filter((story) => story.title && story.url && story.publishedAt && (!feed.trustedAggregate || trustedNewsSource.test(story.source)) && (!feed.policyOnly || (story.categories.includes("政治") && politicalSignal.test(`${story.title} ${story.summary}`))) && (!feed.centralOnly || centralPolicy.test(story.title)) && !noise.test(`${story.title} ${story.summary}`) && inChinaUSScope(story));
 }
