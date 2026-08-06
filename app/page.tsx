@@ -14,21 +14,8 @@ type Story = {
   score: number;
 };
 
-const fallbackStories: Story[] = [
-  {
-    id: "fallback-1",
-    title: "正在连接昨日新闻源",
-    summary: "早报正在从公开 RSS 与免费新闻索引中汇总昨日的重要信息。连接完成后，这里会自动替换为真实报道。",
-    context: "系统只保留中国政策、中国行业、中国科技，以及中美与全球层面的重要信息，并自动过滤娱乐、明星和花边新闻。",
-    category: "速览",
-    source: "早报编辑器",
-    url: "#",
-    publishedAt: new Date().toISOString(),
-    score: 100,
-  },
-];
-
 const filters = ["全部", "政治", "行业", "科技", "全球"];
+const newsCacheKey = "zuori-zaobao-stories-v3";
 
 function yesterdayLabel() {
   const date = new Date();
@@ -41,16 +28,26 @@ function yesterdayLabel() {
 }
 
 export default function Home() {
-  const [stories, setStories] = useState<Story[]>(fallbackStories);
+  const [stories, setStories] = useState<Story[]>([]);
   const [filter, setFilter] = useState("全部");
   const [active, setActive] = useState<Story | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`/api/news?v=politics-20260806-1&t=${Date.now()}`, { cache: "no-store" })
+    try {
+      const cached = JSON.parse(localStorage.getItem(newsCacheKey) || "[]");
+      if (Array.isArray(cached) && cached.length) setStories(cached);
+    } catch {
+      // Ignore a damaged local cache and fetch a fresh edition.
+    }
+
+    fetch("/api/news?v=politics-20260806-2")
       .then((response) => (response.ok ? response.json() : Promise.reject()))
       .then((data) => {
-        if (Array.isArray(data.stories) && data.stories.length) setStories(data.stories);
+        if (Array.isArray(data.stories) && data.stories.length) {
+          setStories(data.stories);
+          localStorage.setItem(newsCacheKey, JSON.stringify(data.stories));
+        }
       })
       .catch(() => undefined)
       .finally(() => setLoading(false));
@@ -111,7 +108,9 @@ export default function Home() {
               </div>
             </button>
           </article>
-        )) : (
+        )) : loading ? (
+          <div className="empty">正在整理今日早报…</div>
+        ) : (
           <div className="empty">昨日没有筛选出这一类的重要讯息。</div>
         )}
       </section>

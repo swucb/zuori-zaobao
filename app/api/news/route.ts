@@ -177,5 +177,5 @@ export async function GET() {
   const translated = await translateStories(pool);
   const categoryOrder = ["政治", "行业", "科技", "全球"];
   const stories = categoryOrder.flatMap((category) => diversify(translated.filter((story) => story.category === category)));
-  return NextResponse.json({ stories, editionDate:target, updatedAt:new Date().toISOString(), sources:[...new Set(stories.map((story) => story.source))], methodology:"公开RSS聚合、跨媒体轮排、娱乐降噪、昨日筛选与公共影响评分；政治栏目在昨日不足时补充最近两日中方与国家领导人相关报道" }, { headers:{ "Cache-Control":"no-store, max-age=0" } });
+  return NextResponse.json({ stories, editionDate:target, updatedAt:new Date().toISOString(), sources:[...new Set(stories.map((story) => story.source))], methodology:"公开RSS聚合、跨媒体轮排、娱乐降噪、昨日筛选与公共影响评分；政治栏目在昨日不足时补充最近两日中方与国家领导人相关报道" }, { headers:{ "Cache-Control":"public, max-age=300, s-maxage=3600, stale-while-revalidate=300" } });
 }
