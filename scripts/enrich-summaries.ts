@@ -38,7 +38,10 @@ async function resolveOriginalUrls(stories:Story[]) {
   const wrapped = stories.filter((story) => /(^|\.)news\.google\.com$/i.test(new URL(story.url).hostname));
   if (!wrapped.length) return;
   try {
-    const results = await new GoogleDecoder().decodeBatch(wrapped.map((story) => story.url));
+    const results = await Promise.race([
+      new GoogleDecoder().decodeBatch(wrapped.map((story) => story.url)),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("解析超过60秒")), 60_000)),
+    ]);
     results.forEach((result, index) => {
       const decoded = result.status && result.decoded_url ? cleanArticleUrl(result.decoded_url) : "";
       if (decoded && !decoded.includes("news.google.com/")) wrapped[index].url = decoded;
@@ -259,3 +262,4 @@ data.summaryAiCount = enriched;
 data.summarySourceCount = extracted;
 await writeFile(newsPath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
 console.log(`已生成 ${enriched + extracted}/${data.stories.length} 条一至两段中文摘要（AI ${enriched} 条，原文提炼 ${extracted} 条）。`);
+process.exit(0);
