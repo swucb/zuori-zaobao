@@ -257,8 +257,11 @@ for (let index = 0; useAi && index < data.stories.length; index += batchSize) {
   const items = stories.map((story, offset) => ({ story, evidence:evidence.get(story.id) || story.summary, key:String(index + offset) }));
   try {
     const summaries = await summarizeBatch(items);
-    for (const result of summaries) {
-      const story = data.stories[Number(result.key)];
+    for (const result of summaries.slice(0, 1)) {
+      // Each request contains exactly one story. Never trust a model-generated
+      // index here: some models normalize every key to "0", which can overwrite
+      // an unrelated story and cause summary crosstalk.
+      const story = stories[0];
       const summary = story && result.summary ? relevantSummary(story.title, result.summary.trim()) : "";
       if (story && summary && summary.length >= 35 && /[\u3400-\u9fff]/.test(summary)) {
         story.summary = summary.slice(0, 700);
